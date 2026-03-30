@@ -1,22 +1,21 @@
 'use client'
-
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 
-interface Card { id: string; title: string; description?: string; priority: string; due_date?: string; labels: string[]; position: number; assignments?: { user?: { id: string; first_name: string; last_name: string } }[] }
+interface Card { id: string; title: string; description?: string; priority: string; due_date?: string; labels: string[]; position: number }
 interface Column { id: string; name: string; color: string; position: number; cards: Card[] }
 interface Board { id: string; name: string; columns: Column[] }
 
-const PRIORITY_COLORS: Record<string, string> = { low: 'text-gray-400', medium: 'text-blue-500', high: 'text-orange-500', urgent: 'text-red-500' }
-const PRIORITY_ICONS: Record<string, string> = { low: '▽', medium: '▸', high: '▴', urgent: '⚑' }
+const PRI: Record<string,{label:string;color:string}> = { low:{label:'Low',color:'#94a3b8'}, medium:{label:'Medium',color:'#3b82f6'}, high:{label:'High',color:'#f59e0b'}, urgent:{label:'Urgent',color:'#ef4444'} }
 
 export default function KanbanPage() {
   const [boards, setBoards] = useState<Board[]>([])
-  const [boardIdx, setBoardIdx] = useState(0)
+  const [idx, setIdx] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [addingCard, setAddingCard] = useState<string | null>(null)
-  const [newCardTitle, setNewCardTitle] = useState('')
-  const [dragging, setDragging] = useState<{ cardId: string; fromColId: string } | null>(null)
+  const [addingCol, setAddingCol] = useState<string|null>(null)
+  const [newTitle, setNewTitle] = useState('')
+  const [dragging, setDragging] = useState<{cardId:string}|null>(null)
+  const [over, setOver] = useState<string|null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch('/api/kanban')
@@ -27,150 +26,101 @@ export default function KanbanPage() {
 
   useEffect(() => { load() }, [load])
 
-  const board = boards[boardIdx]
+  const board = boards[idx]
 
   const addCard = async (columnId: string) => {
-    if (!newCardTitle.trim()) return
-    const res = await fetch('/api/kanban', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create_card', column_id: columnId, title: newCardTitle }),
-    })
-    if (!res.ok) { toast.error('Failed to add card'); return }
-    setAddingCard(null)
-    setNewCardTitle('')
+    if (!newTitle.trim()) return
+    await fetch('/api/kanban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_card', column_id: columnId, title: newTitle }) })
+    setAddingCol(null); setNewTitle('')
     await load()
   }
 
   const moveCard = async (cardId: string, toColId: string) => {
-    await fetch('/api/kanban', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'move_card', card_id: cardId, column_id: toColId, position: 999 }),
-    })
-    // Optimistic update
     setBoards(prev => prev.map((b, i) => {
-      if (i !== boardIdx) return b
-      let movedCard: Card | null = null
-      const cols = b.columns.map(col => {
-        const filtered = col.cards.filter(c => { if (c.id === cardId) { movedCard = c; return false } return true })
-        return { ...col, cards: filtered }
-      })
-      return {
-        ...b,
-        columns: cols.map(col => col.id === toColId && movedCard ? { ...col, cards: [...col.cards, movedCard] } : col),
-      }
+      if (i !== idx) return b
+      let moved: Card | null = null
+      const cols = b.columns.map(col => ({ ...col, cards: col.cards.filter(c => { if (c.id === cardId) { moved = c; return false } return true }) }))
+      return { ...b, columns: cols.map(col => col.id === toColId && moved ? { ...col, cards: [...col.cards, moved] } : col) }
     }))
+    await fetch('/api/kanban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'move_card', card_id: cardId, column_id: toColId, position: 999 }) })
   }
 
   const deleteCard = async (cardId: string) => {
+    setBoards(prev => prev.map((b, i) => i !== idx ? b : { ...b, columns: b.columns.map(col => ({ ...col, cards: col.cards.filter(c => c.id !== cardId) })) }))
     await fetch('/api/kanban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_card', card_id: cardId }) })
     toast.success('Card deleted')
-    await load()
   }
 
-  if (loading) return <div className="text-center py-20 text-gray-400">Loading board...</div>
-  if (boards.length === 0) return (
-    <div className="text-center py-20">
-      <div className="text-4xl mb-4">🗂️</div>
-      <p className="text-gray-500">No boards yet. Creating default board...</p>
-    </div>
-  )
+  if (loading) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>
+  if (!board) return <div style={{ textAlign: 'center', padding: 60 }}><div style={{ fontSize: 40, marginBottom: 12 }}>🗂️</div><p style={{ color: '#64748b' }}>No boards found</p></div>
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Kanban Board</h1>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Kanban Board</h1>
         {boards.length > 1 && (
-          <select className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" value={boardIdx} onChange={e => setBoardIdx(Number(e.target.value))}>
+          <select value={idx} onChange={e => setIdx(Number(e.target.value))} style={{ height: 36, padding: '0 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', background: '#fff' }}>
             {boards.map((b, i) => <option key={b.id} value={i}>{b.name}</option>)}
           </select>
         )}
       </div>
 
-      {board && (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {board.columns.map(col => (
-            <div
-              key={col.id}
-              className="flex-shrink-0 w-72 bg-gray-100 rounded-xl flex flex-col"
-              onDragOver={e => e.preventDefault()}
-              onDrop={() => { if (dragging) moveCard(dragging.cardId, col.id); setDragging(null) }}
-            >
-              {/* Column Header */}
-              <div className="px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: col.color }} />
-                  <span className="font-semibold text-gray-700 text-sm">{col.name}</span>
-                  <span className="text-xs bg-white px-1.5 py-0.5 rounded-full text-gray-500 font-medium">{col.cards.length}</span>
-                </div>
-              </div>
-
-              {/* Cards */}
-              <div className="flex-1 px-3 space-y-2 min-h-[100px]">
-                {col.cards.map(card => (
-                  <div
-                    key={card.id}
-                    draggable
-                    onDragStart={() => setDragging({ cardId: card.id, fromColId: col.id })}
-                    className="bg-white rounded-lg p-3 shadow-sm cursor-grab hover:shadow-md transition-all group"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-gray-900 flex-1">{card.title}</p>
-                      <button onClick={() => deleteCard(card.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 text-xs transition-all">✕</button>
-                    </div>
-                    {card.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{card.description}</p>}
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`text-xs font-medium ${PRIORITY_COLORS[card.priority]}`}>
-                        {PRIORITY_ICONS[card.priority]} {card.priority}
-                      </span>
-                      {card.due_date && <span className="text-xs text-gray-400">📅 {new Date(card.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                    </div>
-                    {(card.labels || []).length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {card.labels.map(l => <span key={l} className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded">{l}</span>)}
-                      </div>
-                    )}
-                    {(card.assignments || []).length > 0 && (
-                      <div className="flex -space-x-1 mt-2">
-                        {card.assignments!.map(a => a.user && (
-                          <div key={a.user.id} title={`${a.user.first_name} ${a.user.last_name}`} className="w-5 h-5 rounded-full bg-indigo-400 text-white text-xs flex items-center justify-center border border-white">
-                            {a.user.first_name[0]}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Add card */}
-              <div className="px-3 py-3">
-                {addingCard === col.id ? (
-                  <div>
-                    <input
-                      autoFocus
-                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Card title..."
-                      value={newCardTitle}
-                      onChange={e => setNewCardTitle(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') addCard(col.id); if (e.key === 'Escape') { setAddingCard(null); setNewCardTitle('') } }}
-                    />
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => addCard(col.id)} className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 transition-all">Add</button>
-                      <button onClick={() => { setAddingCard(null); setNewCardTitle('') }} className="text-xs text-gray-500 hover:text-gray-900">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button onClick={() => { setAddingCard(col.id); setNewCardTitle('') }} className="w-full text-xs text-gray-500 hover:text-gray-900 hover:bg-white rounded-lg py-1.5 transition-all">
-                    + Add card
-                  </button>
-                )}
-              </div>
+      <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 16 }}>
+        {board.columns.map(col => (
+          <div key={col.id} style={{ width: 280, flexShrink: 0, background: over === col.id ? '#eef2ff' : '#f1f5f9', borderRadius: 14, display: 'flex', flexDirection: 'column', minHeight: 200, border: over === col.id ? '2px dashed #818cf8' : '2px solid transparent', transition: 'all 0.15s' }}
+          onDragOver={e => { e.preventDefault(); setOver(col.id) }}
+          onDragLeave={() => setOver(null)}
+          onDrop={() => { if (dragging) moveCard(dragging.cardId, col.id); setDragging(null); setOver(null) }}
+          >
+            <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: col.color }} />
+              <span style={{ fontWeight: 700, fontSize: 13, color: '#374151', flex: 1 }}>{col.name}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', background: '#fff', padding: '1px 7px', borderRadius: 99 }}>{col.cards.length}</span>
             </div>
-          ))}
-        </div>
-      )}
+
+            <div style={{ flex: 1, padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {col.cards.map(card => {
+                const pri = PRI[card.priority] || PRI.medium
+                return (
+                  <div key={card.id} draggable onDragStart={() => setDragging({ cardId: card.id })} onDragEnd={() => setDragging(null)}
+                  style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', cursor: 'grab', border: '1px solid #f1f5f9', position: 'relative', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; el.style.transform = 'translateY(-1px)' }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'; el.style.transform = 'translateY(0)' }}
+                  >
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', paddingRight: 18 }}>{card.title}</p>
+                    {card.description && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{card.description}</p>}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: pri.color }}>● {pri.label}</span>
+                      {card.due_date && <span style={{ fontSize: 10, color: '#94a3b8' }}>📅 {new Date(card.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                    </div>
+                    <button onClick={() => deleteCard(card.id)} style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 11, padding: '2px 4px', borderRadius: 4, transition: 'all 0.15s' }}
+                    onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.color = '#ef4444'; el.style.background = '#fef2f2' }}
+                    onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.color = '#cbd5e1'; el.style.background = 'none' }}
+                    >✕</button>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ padding: '8px 10px 12px' }}>
+              {addingCol === col.id ? (
+                <div>
+                  <input autoFocus value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Card title..." onKeyDown={e => { if (e.key === 'Enter') addCard(col.id); if (e.key === 'Escape') { setAddingCol(null); setNewTitle('') } }} style={{ width: '100%', height: 36, border: '1.5px solid #818cf8', borderRadius: 8, padding: '0 10px', fontSize: 12, outline: 'none', background: '#fff' }} />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    <button onClick={() => addCard(col.id)} style={{ flex: 1, height: 30, background: '#4f46e5', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                    <button onClick={() => { setAddingCol(null); setNewTitle('') }} style={{ height: 30, padding: '0 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, color: '#64748b', cursor: 'pointer' }}>✕</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => { setAddingCol(col.id); setNewTitle('') }} style={{ width: '100%', height: 32, background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 12, borderRadius: 8, transition: 'all 0.15s' }}
+                onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = '#fff'; el.style.color = '#4f46e5' }}
+                onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = 'none'; el.style.color = '#94a3b8' }}
+                >+ Add card</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

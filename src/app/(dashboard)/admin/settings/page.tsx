@@ -1,10 +1,9 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 
 export default function SettingsPage() {
-  const [tenant, setTenant] = useState<{ name: string; timezone: string; working_hours_start: string; working_hours_end: string; late_threshold: number; working_days: string[] } | null>(null)
+  const [tenant, setTenant] = useState<{ name: string; timezone: string; work_start_time: string; work_end_time: string; late_threshold: number; work_days: string } | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -22,51 +21,56 @@ export default function SettingsPage() {
     } finally { setSaving(false) }
   }
 
-  if (!tenant) return <div className="text-center py-12 text-gray-400">Loading...</div>
+  if (!tenant) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>
 
-  const DAYS = ['MON','TUE','WED','THU','FRI','SAT','SUN']
+  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>{label}</label>
+      {children}
+    </div>
+  )
+
+  const inputStyle = { width: '100%', height: 42, border: '1.5px solid #e2e8f0', borderRadius: 8, padding: '0 12px', fontSize: 14, color: '#0f172a', outline: 'none', transition: 'border-color 0.15s', background: '#fff' }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900">Company Settings</h1>
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 space-y-5">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-          <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" value={tenant.name} onChange={e => setTenant(t => t && ({ ...t, name: e.target.value }))} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-          <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" value={tenant.timezone} onChange={e => setTenant(t => t && ({ ...t, timezone: e.target.value }))}>
-            <option value="Asia/Karachi">Asia/Karachi (PKT)</option>
-            <option value="UTC">UTC</option>
-            <option value="America/New_York">America/New_York (EST)</option>
-            <option value="Europe/London">Europe/London (GMT)</option>
-            <option value="Asia/Dubai">Asia/Dubai (GST)</option>
-          </select>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Work Start</label>
-            <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" value={tenant.working_hours_start} onChange={e => setTenant(t => t && ({ ...t, working_hours_start: e.target.value }))} />
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Company Settings</h1>
+        <p style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>Manage your workspace configuration</p>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <Field label="Company Name">
+            <input value={tenant.name} onChange={e => setTenant(t => t && ({ ...t, name: e.target.value }))} style={inputStyle} onFocus={e => e.target.style.borderColor = '#4f46e5'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+          </Field>
+
+          <Field label="Timezone">
+            <select value={tenant.timezone} onChange={e => setTenant(t => t && ({ ...t, timezone: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer' }}>
+              {['Asia/Karachi','UTC','America/New_York','America/Los_Angeles','America/Chicago','Europe/London','Europe/Paris','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Australia/Sydney'].map(tz => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+          </Field>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <Field label="Work Start Time">
+              <input type="time" value={tenant.work_start_time} onChange={e => setTenant(t => t && ({ ...t, work_start_time: e.target.value }))} style={inputStyle} onFocus={e => e.target.style.borderColor = '#4f46e5'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+            </Field>
+            <Field label="Work End Time">
+              <input type="time" value={tenant.work_end_time} onChange={e => setTenant(t => t && ({ ...t, work_end_time: e.target.value }))} style={inputStyle} onFocus={e => e.target.style.borderColor = '#4f46e5'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Work End</label>
-            <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" value={tenant.working_hours_end} onChange={e => setTenant(t => t && ({ ...t, working_hours_end: e.target.value }))} />
-          </div>
+
+          <Field label="Late Threshold (minutes after start time)">
+            <input type="number" min={0} max={120} value={tenant.late_threshold} onChange={e => setTenant(t => t && ({ ...t, late_threshold: parseInt(e.target.value) || 0 }))} style={inputStyle} onFocus={e => e.target.style.borderColor = '#4f46e5'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+          </Field>
+
+          <button onClick={save} disabled={saving} style={{ height: 44, background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, boxShadow: '0 2px 8px rgba(79,70,229,0.3)', transition: 'all 0.2s' }}
+          onMouseEnter={e => { if (!saving) (e.currentTarget as HTMLButtonElement).style.background = '#4338ca' }}
+          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = '#4f46e5'}
+          >{saving ? 'Saving...' : 'Save Settings'}</button>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Working Days</label>
-          <div className="flex gap-2">
-            {DAYS.map(d => (
-              <button key={d} type="button" onClick={() => setTenant(t => t && ({ ...t, working_days: t.working_days.includes(d) ? t.working_days.filter(x => x !== d) : [...t.working_days, d] }))} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${tenant.working_days.includes(d) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{d.slice(0,2)}</button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Late Threshold (minutes)</label>
-          <input type="number" min={0} max={120} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" value={tenant.late_threshold} onChange={e => setTenant(t => t && ({ ...t, late_threshold: parseInt(e.target.value) || 0 }))} />
-        </div>
-        <button onClick={save} disabled={saving} className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-all">{saving ? 'Saving...' : 'Save Settings'}</button>
       </div>
     </div>
   )

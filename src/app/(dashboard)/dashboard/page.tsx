@@ -1,140 +1,192 @@
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
-async function getDashboardData(tenantId: string) {
+async function getData(tenantId: string, userId: string) {
   const today = new Date().toISOString().split('T')[0]
-
-  const [{ count: total }, { data: todayLogs }, { count: pendingLeaves }, { data: announcements }] = await Promise.all([
-    supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true),
-    supabaseAdmin.from('attendance_logs').select('status, user_id, clock_in, clock_out').eq('tenant_id', tenantId).eq('date', today),
+  const [{ count: total }, { data: logs }, { count: pending }, myLogResult] = await Promise.all([
+    supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true),
+    supabaseAdmin.from('attendance_logs').select('status,is_late').eq('tenant_id', tenantId).eq('attendance_date', today),
     supabaseAdmin.from('leave_requests').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'pending'),
-    supabaseAdmin.from('announcements').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(3),
+    supabaseAdmin.from('attendance_logs').select('punch_in_at,punch_out_at,status,is_late,net_duration_minutes').eq('user_id', userId).eq('attendance_date', today).maybeSingle(),
   ])
+  const myLog = myLogResult.data
+  const present = logs?.filter(l => ['punched_in','punched_out','on_break'].includes(l.status)).length || 0
+  const late = logs?.filter(l => l.is_late).length || 0
+  const onLeave = logs?.filter(l => l.status === 'on_leave').length || 0
+  return {
+    total: total || 0, present, late, onLeave,
+    absent: Math.max(0, (total || 0) - present - onLeave),
+    pendingLeaves: pending || 0,
+    attendanceRate: total ? Math.round((present / (total || 1)) * 100) : 0,
+    myLog,
+  }
+}
 
-  const present = todayLogs?.filter(l => ['present','late'].includes(l.status)).length || 0
-  const late = todayLogs?.filter(l => l.status === 'late').length || 0
-  const onLeave = todayLogs?.filter(l => l.status === 'on_leave').length || 0
-  const absent = Math.max(0, (total || 0) - present - onLeave)
+function fmtTime(iso?: string | null) {
+  if (!iso) return '--:--'
+  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+}
 
-  return { total: total || 0, present, late, onLeave, absent, pendingLeaves: pendingLeaves || 0, announcements: announcements || [], attendanceRate: total ? Math.round((present / (total || 1)) * 100) : 0 }
+function greeting() {
+  const h = new Date().getHours()
+  return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
+}
+
+function fmtDuration(minutes?: number | null) {
+  if (!minutes) return '--'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
   if (!user) return null
-
-  const data = await getDashboardData(user.tenant_id)
-  const today = new Date().toISOString().split('T')[0]
-
-  // Check if user has clocked in
-  const { data: myLog } = await supabaseAdmin
-    .from('attendance_logs').select('clock_in, clock_out, status').eq('user_id', user.id).eq('date', today).single()
+  const d = await getData(user.tenant_id, user.id)
+  const firstName = user.first_name || user.full_name.split(' ')[0]
+  const myLog = d.myLog as { punch_in_at?: string; punch_out_at?: string; is_late?: boolean; net_duration_minutes?: number } | null
+  const clockedIn = !!myLog?.punch_in_at
+  const clockedOut = !!myLog?.punch_out_at
 
   const stats = [
-    { label: 'Total Employees', value: data.total, color: 'bg-blue-500', icon: '👥' },
-    { label: 'Present Today', value: data.present, color: 'bg-green-500', icon: '✅' },
-    { label: 'Absent Today', value: data.absent, color: 'bg-red-500', icon: '❌' },
-    { label: 'Late Arrivals', value: data.late, color: 'bg-yellow-500', icon: '⚠️' },
-    { label: 'On Leave', value: data.onLeave, color: 'bg-purple-500', icon: '🏖️' },
-    { label: 'Pending Leaves', value: data.pendingLeaves, color: 'bg-orange-500', icon: '📋' },
+    { label: 'Total Employees', val: d.total, color: '#3b82f6', bg: '#eff6ff', icon: '👥', sub: 'active' },
+    { label: 'Present Today', val: d.present, color: '#10b981', bg: '#f0fdf4', icon: '✅', sub: 'on site' },
+    { label: 'Absent', val: d.absent, color: '#ef4444', bg: '#fef2f2', icon: '⊘', sub: 'not checked in' },
+    { label: 'Late Arrivals', val: d.late, color: '#f59e0b', bg: '#fffbeb', icon: '⏱', sub: 'past threshold' },
+    { label: 'On Leave', val: d.onLeave, color: '#8b5cf6', bg: '#f5f3ff', icon: '✈', sub: 'approved' },
+    { label: 'Pending Leaves', val: d.pendingLeaves, color: '#f97316', bg: '#fff7ed', icon: '📋', sub: 'awaiting review' },
   ]
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Good {getGreeting()}, {user.first_name}! 👋</h1>
-        <p className="text-gray-500 mt-1">Here&apos;s what&apos;s happening at {user.tenant?.name} today.</p>
+    <div style={{ maxWidth: 1200 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+          Good {greeting()}, {firstName}! 👋
+        </h1>
+        <p style={{ color: '#64748b', fontSize: 14, marginTop: 4 }}>
+          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          {' · '}{user.tenant?.name}
+        </p>
       </div>
 
-      {/* Clock In/Out Card */}
-      <ClockCard myLog={myLog} />
+      {/* Clock-in hero */}
+      <div style={{
+        background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #6d28d9 100%)',
+        borderRadius: 20, padding: '24px 28px', marginBottom: 24,
+        boxShadow: '0 8px 32px rgba(79,70,229,0.3)',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', right: -40, top: -40, width: 200, height: 200, background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
+        <div style={{ position: 'absolute', right: 40, bottom: -60, width: 160, height: 160, background: 'rgba(255,255,255,0.04)', borderRadius: '50%' }} />
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {stats.map(stat => (
-          <div key={stat.label} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-            <div className={`w-10 h-10 ${stat.color} bg-opacity-10 rounded-lg flex items-center justify-center text-lg mb-3`}>
-              {stat.icon}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 4 }}>
+              {!clockedIn ? "Ready to start your day?" : clockedOut ? '✓ Shift complete for today' : `On duty — clocked in at ${fmtTime(myLog?.punch_in_at)}`}
             </div>
-            <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-            <div className="text-xs text-gray-500 mt-0.5">{stat.label}</div>
+            <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>
+              {clockedOut
+                ? `Clocked out at ${fmtTime(myLog?.punch_out_at)} · Total: ${fmtDuration(myLog?.net_duration_minutes)}`
+                : clockedIn
+                  ? myLog?.is_late ? '⚠ Marked as late arrival' : '✓ On time'
+                  : 'Click the button to clock in and start tracking'
+              }
+            </div>
+          </div>
+          {!clockedOut && (
+            <a href="/attendance" style={{
+              background: 'rgba(255,255,255,0.15)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              color: '#fff', padding: '12px 24px', borderRadius: 12,
+              textDecoration: 'none', fontSize: 14, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 8,
+              transition: 'all 0.2s', whiteSpace: 'nowrap',
+            }}>
+              {clockedIn ? '🔴 Clock Out' : '🟢 Clock In'}
+            </a>
+          )}
+        </div>
+
+        {clockedIn && (
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1,
+            marginTop: 20, paddingTop: 20,
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+          }}>
+            {[
+              { label: 'CLOCK IN', value: fmtTime(myLog?.punch_in_at) },
+              { label: 'CLOCK OUT', value: fmtTime(myLog?.punch_out_at) },
+              { label: 'DURATION', value: fmtDuration(myLog?.net_duration_minutes) },
+            ].map(item => (
+              <div key={item.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: 1.5, fontWeight: 600 }}>{item.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginTop: 4 }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(168px,1fr))', gap: 14, marginBottom: 24 }}>
+        {stats.map(s => (
+          <div key={s.label} style={{
+            background: '#fff', borderRadius: 14, padding: '16px 18px',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9',
+            transition: 'all 0.2s', cursor: 'default',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)' }}
+          >
+            <div style={{ width: 38, height: 38, background: s.bg, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: 12 }}>
+              {s.icon}
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.03em' }}>{s.val}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 2 }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{s.sub}</div>
           </div>
         ))}
       </div>
 
       {/* Attendance rate */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="font-semibold text-gray-900">Today&apos;s Attendance Rate</h3>
-          <span className="text-2xl font-bold text-indigo-600">{data.attendanceRate}%</span>
-        </div>
-        <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-3 bg-indigo-600 rounded-full transition-all" style={{ width: `${data.attendanceRate}%` }} />
-        </div>
-        <div className="flex justify-between text-xs text-gray-400 mt-2">
-          <span>{data.present} present</span>
-          <span>{data.total} total</span>
-        </div>
-      </div>
-
-      {/* Announcements */}
-      {data.announcements.length > 0 && (
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h3 className="font-semibold text-gray-900 mb-4">📢 Announcements</h3>
-          <div className="space-y-3">
-            {data.announcements.map((a: { id: string; title: string; content: string; priority: string; created_at: string }) => (
-              <div key={a.id} className="p-3 rounded-lg bg-gray-50 border-l-4 border-indigo-500">
-                <div className="font-medium text-sm text-gray-900">{a.title}</div>
-                <div className="text-xs text-gray-500 mt-1">{a.content}</div>
-              </div>
-            ))}
+      <div style={{ background: '#fff', borderRadius: 16, padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 15 }}>Today&apos;s Attendance Rate</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{d.present} present out of {d.total} employees</div>
           </div>
+          <div style={{
+            fontSize: 32, fontWeight: 800, color: d.attendanceRate >= 80 ? '#10b981' : d.attendanceRate >= 60 ? '#f59e0b' : '#ef4444',
+            letterSpacing: '-0.03em',
+          }}>{d.attendanceRate}%</div>
         </div>
-      )}
-    </div>
-  )
-}
-
-function getGreeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
-}
-
-function ClockCard({ myLog }: { myLog: { clock_in?: string; clock_out?: string; status?: string } | null }) {
-  const clockedIn = !!myLog?.clock_in
-  const clockedOut = !!myLog?.clock_out
-
-  return (
-    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-6 text-white">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-lg font-semibold">
-            {!clockedIn ? "You haven't clocked in yet" : clockedOut ? 'You\'ve completed today\'s shift' : `Clocked in at ${formatTime(myLog?.clock_in)}`}
-          </div>
-          <div className="text-indigo-200 text-sm mt-1">
-            {clockedOut ? `Clocked out at ${formatTime(myLog?.clock_out)}` : clockedIn ? 'Currently on duty' : 'Clock in to start tracking'}
-          </div>
+        <div style={{ height: 10, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{
+            height: 10, borderRadius: 99, transition: 'width 0.8s ease',
+            width: `${d.attendanceRate}%`,
+            background: d.attendanceRate >= 80
+              ? 'linear-gradient(90deg, #10b981, #059669)'
+              : d.attendanceRate >= 60
+                ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                : 'linear-gradient(90deg, #ef4444, #dc2626)',
+          }} />
         </div>
-        <AttendanceButton clockedIn={clockedIn} clockedOut={clockedOut} />
+        <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>
+          {[
+            { label: 'Present', val: d.present, color: '#10b981' },
+            { label: 'Absent', val: d.absent, color: '#ef4444' },
+            { label: 'Late', val: d.late, color: '#f59e0b' },
+            { label: 'On Leave', val: d.onLeave, color: '#8b5cf6' },
+          ].map(item => (
+            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color }} />
+              <span style={{ fontSize: 12, color: '#64748b' }}>{item.label}: <strong style={{ color: '#0f172a' }}>{item.val}</strong></span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
-}
-
-function AttendanceButton({ clockedIn, clockedOut }: { clockedIn: boolean; clockedOut: boolean }) {
-  if (clockedOut) return <div className="text-3xl">✅</div>
-  return (
-    <form action={clockedIn ? '/api/attendance' : '/api/attendance'} method="POST">
-      <a href="/attendance" className="bg-white text-indigo-700 px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-50 transition-all">
-        {clockedIn ? '→ Clock Out' : '→ Clock In'}
-      </a>
-    </form>
-  )
-}
-
-function formatTime(iso?: string) {
-  if (!iso) return '--:--'
-  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
