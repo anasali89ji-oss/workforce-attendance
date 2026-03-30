@@ -1,0 +1,492 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Tenant {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  logo_url        String?
+  timezone        String   @default("UTC")
+  working_hours_start String @default("09:00")
+  working_hours_end   String @default("18:00")
+  working_days    String[] @default(["MON","TUE","WED","THU","FRI"])
+  late_threshold  Int      @default(15)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  users             User[]
+  roles             Role[]
+  departments       Department[]
+  shifts            Shift[]
+  leave_types       LeaveType[]
+  announcements     Announcement[]
+  kanban_boards     KanbanBoard[]
+  setup_state       SetupWizardState?
+  custom_fields     CustomField[]
+
+  @@map("tenants")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  tenant_id       String
+  email           String
+  password_hash   String
+  first_name      String
+  last_name       String
+  phone           String?
+  avatar_url      String?
+  role_id         String?
+  department_id   String?
+  position_id     String?
+  employee_id     String?
+  is_active       Boolean   @default(true)
+  joined_at       DateTime  @default(now())
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  tenant            Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  role              Role?               @relation(fields: [role_id], references: [id])
+  department        Department?         @relation(fields: [department_id], references: [id])
+  position          Position?           @relation(fields: [position_id], references: [id])
+  attendance_logs   AttendanceLog[]
+  leave_requests    LeaveRequest[]      @relation("EmployeeLeaveRequests")
+  leave_approvals   LeaveRequest[]      @relation("ApproverLeaveRequests")
+  leave_balances    LeaveBalance[]
+  kanban_assignments KanbanCardAssignment[]
+  notifications     Notification[]
+  audit_logs        AuditLog[]
+  invitations_sent  TeamInvitation[]    @relation("InvitedBy")
+  break_logs        BreakLog[]
+  payroll_records   PayrollRecord[]
+  overtime_requests OvertimeRequest[]
+  custom_field_values EmployeeCustomFieldValue[]
+
+  @@unique([tenant_id, email])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  name        String
+  slug        String
+  description String?
+  color       String   @default("#6366f1")
+  is_system   Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users       User[]
+  permissions RolePermission[]
+
+  @@unique([tenant_id, slug])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  module      String
+  created_at  DateTime @default(now())
+
+  role_permissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id            String   @id @default(uuid())
+  role_id       String
+  permission_id String
+  created_at    DateTime @default(now())
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  name        String
+  description String?
+  head_id     String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users     User[]
+  positions Position[]
+
+  @@map("departments")
+}
+
+model Position {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  department_id String?
+  title         String
+  level         String?
+  created_at    DateTime @default(now())
+
+  department Department? @relation(fields: [department_id], references: [id])
+  users      User[]
+
+  @@map("positions")
+}
+
+model Shift {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  name        String
+  start_time  String
+  end_time    String
+  color       String   @default("#3b82f6")
+  is_night    Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant           Tenant          @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  work_schedules   WorkSchedule[]
+  attendance_logs  AttendanceLog[]
+
+  @@map("shifts")
+}
+
+model WorkSchedule {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  user_id    String
+  shift_id   String
+  day_of_week String
+  effective_from DateTime
+  effective_to   DateTime?
+  created_at DateTime @default(now())
+
+  shift Shift @relation(fields: [shift_id], references: [id])
+
+  @@map("work_schedules")
+}
+
+model AttendanceLog {
+  id              String    @id @default(uuid())
+  tenant_id       String
+  user_id         String
+  shift_id        String?
+  date            DateTime  @db.Date
+  clock_in        DateTime?
+  clock_out       DateTime?
+  status          String    @default("present")
+  late_minutes    Int       @default(0)
+  overtime_minutes Int      @default(0)
+  notes           String?
+  ip_address      String?
+  location_lat    Float?
+  location_lng    Float?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  shift  Shift? @relation(fields: [shift_id], references: [id])
+  breaks BreakLog[]
+
+  @@unique([user_id, date])
+  @@map("attendance_logs")
+}
+
+model BreakLog {
+  id              String    @id @default(uuid())
+  attendance_id   String
+  user_id         String
+  break_start     DateTime
+  break_end       DateTime?
+  duration_minutes Int?
+  break_type      String    @default("regular")
+  created_at      DateTime  @default(now())
+
+  attendance AttendanceLog @relation(fields: [attendance_id], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("break_logs")
+}
+
+model LeaveType {
+  id              String   @id @default(uuid())
+  tenant_id       String
+  name            String
+  code            String
+  color           String   @default("#10b981")
+  days_per_year   Int      @default(0)
+  carry_forward   Boolean  @default(false)
+  requires_approval Boolean @default(true)
+  created_at      DateTime @default(now())
+
+  tenant          Tenant         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  leave_requests  LeaveRequest[]
+  leave_balances  LeaveBalance[]
+
+  @@map("leave_types")
+}
+
+model LeaveRequest {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  employee_id   String
+  approver_id   String?
+  leave_type_id String
+  start_date    DateTime @db.Date
+  end_date      DateTime @db.Date
+  days_count    Float
+  reason        String?
+  status        String   @default("pending")
+  approved_at   DateTime?
+  rejected_at   DateTime?
+  rejection_reason String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  employee   User      @relation("EmployeeLeaveRequests", fields: [employee_id], references: [id], onDelete: Cascade)
+  approver   User?     @relation("ApproverLeaveRequests", fields: [approver_id], references: [id])
+  leave_type LeaveType @relation(fields: [leave_type_id], references: [id])
+
+  @@map("leave_requests")
+}
+
+model LeaveBalance {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  user_id       String
+  leave_type_id String
+  year          Int
+  total_days    Float    @default(0)
+  used_days     Float    @default(0)
+  pending_days  Float    @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  leave_type LeaveType @relation(fields: [leave_type_id], references: [id])
+
+  @@unique([user_id, leave_type_id, year])
+  @@map("leave_balances")
+}
+
+model KanbanBoard {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  name        String
+  description String?
+  created_by  String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant  Tenant         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  columns KanbanColumn[]
+
+  @@map("kanban_boards")
+}
+
+model KanbanColumn {
+  id         String   @id @default(uuid())
+  board_id   String
+  name       String
+  color      String   @default("#6366f1")
+  position   Int      @default(0)
+  created_at DateTime @default(now())
+
+  board KanbanBoard  @relation(fields: [board_id], references: [id], onDelete: Cascade)
+  cards KanbanCard[]
+
+  @@map("kanban_columns")
+}
+
+model KanbanCard {
+  id          String   @id @default(uuid())
+  column_id   String
+  title       String
+  description String?
+  priority    String   @default("medium")
+  due_date    DateTime?
+  position    Int      @default(0)
+  labels      String[] @default([])
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  column      KanbanColumn           @relation(fields: [column_id], references: [id], onDelete: Cascade)
+  assignments KanbanCardAssignment[]
+
+  @@map("kanban_cards")
+}
+
+model KanbanCardAssignment {
+  id         String   @id @default(uuid())
+  card_id    String
+  user_id    String
+  created_at DateTime @default(now())
+
+  card KanbanCard @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([card_id, user_id])
+  @@map("kanban_card_assignments")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  user_id     String
+  title       String
+  message     String
+  type        String   @default("info")
+  is_read     Boolean  @default(false)
+  action_url  String?
+  created_at  DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  user_id     String?
+  action      String
+  entity_type String
+  entity_id   String?
+  old_values  Json?
+  new_values  Json?
+  ip_address  String?
+  created_at  DateTime @default(now())
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Announcement {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  title       String
+  content     String
+  priority    String   @default("normal")
+  author_id   String
+  expires_at  DateTime?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@map("announcements")
+}
+
+model PayrollRecord {
+  id              String   @id @default(uuid())
+  tenant_id       String
+  user_id         String
+  period_start    DateTime @db.Date
+  period_end      DateTime @db.Date
+  base_salary     Float
+  overtime_pay    Float    @default(0)
+  deductions      Float    @default(0)
+  net_pay         Float
+  status          String   @default("draft")
+  processed_at    DateTime?
+  created_at      DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("payroll_records")
+}
+
+model OvertimeRequest {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  user_id     String
+  date        DateTime @db.Date
+  hours       Float
+  reason      String?
+  status      String   @default("pending")
+  approved_by String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("overtime_requests")
+}
+
+model TeamInvitation {
+  id           String    @id @default(uuid())
+  tenant_id    String
+  email        String
+  role_id      String?
+  invited_by   String
+  token        String    @unique @default(uuid())
+  status       String    @default("pending")
+  expires_at   DateTime
+  accepted_at  DateTime?
+  created_at   DateTime  @default(now())
+
+  inviter User @relation("InvitedBy", fields: [invited_by], references: [id])
+
+  @@map("team_invitations")
+}
+
+model SetupWizardState {
+  id          String   @id @default(uuid())
+  tenant_id   String   @unique
+  step        Int      @default(1)
+  is_complete Boolean  @default(false)
+  data        Json     @default("{}")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@map("setup_wizard_state")
+}
+
+model CustomField {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  name         String
+  field_key    String
+  field_type   String   @default("text")
+  is_required  Boolean  @default(false)
+  options      String[] @default([])
+  created_at   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  values EmployeeCustomFieldValue[]
+
+  @@map("custom_fields")
+}
+
+model EmployeeCustomFieldValue {
+  id             String   @id @default(uuid())
+  custom_field_id String
+  user_id        String
+  value          String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  custom_field CustomField @relation(fields: [custom_field_id], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([custom_field_id, user_id])
+  @@map("employee_custom_field_values")
+}
