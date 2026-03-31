@@ -1,10 +1,14 @@
+export const dynamic = 'force-dynamic'
+
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export default async function RootPage() {
   try {
-    const { data: tenants } = await supabaseAdmin.from('tenants').select('id').limit(1)
+    const { data: tenants } = await supabaseAdmin
+      .from('tenants').select('id').limit(1)
+
     if (!tenants || tenants.length === 0) redirect('/setup')
 
     const { data: state } = await supabaseAdmin
@@ -19,6 +23,6 @@ export default async function RootPage() {
     if (!user) redirect('/login')
     redirect('/dashboard')
   } catch {
-    redirect('/setup')
+    redirect('/login')
   }
 }
