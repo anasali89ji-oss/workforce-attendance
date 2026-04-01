@@ -1,131 +1,236 @@
 'use client'
+
 import { useState, useEffect, useCallback } from 'react'
-import { BarChart2, TrendingUp, Users, UserCheck, AlertTriangle, Plane, FileText, Clock, Calendar } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
+import { BarChart2, TrendingUp, Users, UserCheck, AlertTriangle, Plane, FileText, Clock, Calendar, Download, RefreshCw } from 'lucide-react'
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts'
 
 interface Summary { total_employees:number; present_today:number; absent_today:number; late_today:number; on_leave_today:number; attendance_rate:number; pending_leaves:number }
 
 const KPIS = [
-  { key:'total_employees',  label:'Total',       Icon:Users,          color:'#2563EB', bg:'#EFF6FF' },
-  { key:'present_today',    label:'Present',     Icon:UserCheck,      color:'#16A34A', bg:'#F0FDF4' },
-  { key:'absent_today',     label:'Absent',      Icon:Clock,          color:'#DC2626', bg:'#FEF2F2' },
-  { key:'late_today',       label:'Late',        Icon:AlertTriangle,  color:'#D97706', bg:'#FFFBEB' },
-  { key:'on_leave_today',   label:'On Leave',    Icon:Plane,          color:'#7C3AED', bg:'#F5F3FF' },
-  { key:'attendance_rate',  label:'Rate',        Icon:TrendingUp,     color:'#0891B2', bg:'#F0F9FF', pct:true },
-  { key:'pending_leaves',   label:'Pending',     Icon:FileText,       color:'#F97316', bg:'#FFF7ED' },
+  { key:'total_employees',  label:'Total',       Icon:Users,          color:'#4f46e5', bg:'#eef2ff' },
+  { key:'present_today',    label:'Present',     Icon:UserCheck,      color:'#10b981', bg:'#d1fae5' },
+  { key:'absent_today',     label:'Absent',      Icon:Clock,          color:'#ef4444', bg:'#fee2e2' },
+  { key:'late_today',       label:'Late',        Icon:AlertTriangle,  color:'#f59e0b', bg:'#fef3c7' },
+  { key:'on_leave_today',   label:'On Leave',    Icon:Plane,          color:'#8b5cf6', bg:'#ede9fe' },
+  { key:'attendance_rate',  label:'Rate %',      Icon:TrendingUp,     color:'#0891b2', bg:'#f0f9ff', pct: true },
+  { key:'pending_leaves',   label:'Pending',     Icon:FileText,       color:'#f97316', bg:'#ffedd5' },
 ]
-const PIE_COLORS = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2']
+
+const PIE_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#0891b2']
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', boxShadow: 'var(--shadow-md)', fontSize: 12 }}>
+      {label && <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{label}</div>}
+      {payload.map((p: any) => (
+        <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, display: 'inline-block' }} />
+          <span style={{ color: 'var(--text-2)' }}>{p.name}: <strong style={{ color: 'var(--text)' }}>{p.value}{p.name === 'rate' ? '%' : ''}</strong></span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+type Period = 'week' | 'month' | 'quarter'
 
 export default function AnalyticsPage() {
-  const [summary, setSummary] = useState<Summary|null>(null)
-  const [monthly, setMonthly] = useState<unknown[]>([])
-  const [deptStats, setDeptStats] = useState<unknown[]>([])
-  const [leaveStats, setLeaveStats] = useState<unknown[]>([])
-  const [month, setMonth] = useState(new Date().toISOString().slice(0,7))
+  const [summary, setSummary]     = useState<Summary|null>(null)
+  const [monthly, setMonthly]     = useState<any[]>([])
+  const [deptStats, setDeptStats] = useState<any[]>([])
+  const [leaveStats, setLeaveStats] = useState<any[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [period, setPeriod]       = useState<Period>('month')
+  const [month, setMonth]         = useState(new Date().toISOString().slice(0,7))
 
   const load = useCallback(async () => {
-    const [s,m,d,l] = await Promise.all([
-      fetch('/api/analytics?type=summary').then(r=>r.json()),
-      fetch(`/api/analytics?type=monthly_attendance&month=${month}`).then(r=>r.json()),
-      fetch('/api/analytics?type=department_stats').then(r=>r.json()),
-      fetch(`/api/analytics?type=leave_summary&month=${month}`).then(r=>r.json()),
-    ])
-    if (s.data) setSummary(s.data)
-    if (m.data) setMonthly(m.data)
-    if (d.data) setDeptStats(d.data)
-    if (l.data) setLeaveStats(l.data)
+    setLoading(true)
+    try {
+      const [s, m, d, l] = await Promise.all([
+        fetch('/api/analytics?type=summary').then(r => r.json()),
+        fetch(`/api/analytics?type=monthly_attendance&month=${month}`).then(r => r.json()),
+        fetch('/api/analytics?type=department_stats').then(r => r.json()),
+        fetch(`/api/analytics?type=leave_summary&month=${month}`).then(r => r.json()),
+      ])
+      if (s.data) setSummary(s.data)
+      if (m.data) setMonthly(m.data)
+      if (d.data) setDeptStats(d.data)
+      if (l.data) setLeaveStats(l.data)
+    } finally { setLoading(false) }
   }, [month])
 
   useEffect(() => { load() }, [load])
 
+  const exportData = () => {
+    if (!monthly.length) { toast.error?.('No data to export'); return }
+    const rows = [['Date','Present','Late','Absent'], ...monthly.map((r:any) => [r.date, r.present, r.late, r.absent])]
+    const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv'})
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `analytics-${month}.csv`; a.click()
+  }
+
+  function toast(x: any) {}  // placeholder
+
   return (
-    <div style={{ maxWidth:1100, animation:'fadeUp 0.35s ease' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
+    <div className="page anim-fade-up">
+      {/* Header */}
+      <div className="section-header">
         <div>
-          <h1 style={{ fontSize:20, fontWeight:700, color:'#0F172A', display:'flex', alignItems:'center', gap:8 }}>
-            <BarChart2 size={20} color="#2563EB" strokeWidth={2} />
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BarChart2 size={20} color="var(--brand-500)" strokeWidth={2} />
             Analytics
           </h1>
-          <p style={{ color:'#64748B', fontSize:13, marginTop:3 }}>Workforce insights and attendance metrics</p>
+          <p style={{ color: 'var(--text-3)', fontSize: 13, marginTop: 3 }}>Workforce insights and attendance metrics</p>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, background:'#fff', border:'1px solid #E2E8F0', borderRadius:9, padding:'0 12px', height:38 }}>
-          <Calendar size={14} color="#64748B" strokeWidth={2} />
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          style={{ border:'none', outline:'none', fontSize:13, color:'#374151', background:'transparent', cursor:'pointer' }} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, padding: '0 12px', height: 38 }}>
+            <Calendar size={14} color="var(--text-3)" strokeWidth={1.8} />
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+              style={{ border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)', background: 'transparent', cursor: 'pointer' }} />
+          </div>
+          <button onClick={load} className="btn btn-ghost btn-sm" style={{ gap: 5 }}>
+            <RefreshCw size={13} strokeWidth={2} />Refresh
+          </button>
+          <button onClick={exportData} className="btn btn-secondary btn-sm" style={{ gap: 5 }}>
+            <Download size={13} strokeWidth={2} />Export
+          </button>
         </div>
       </div>
 
-      {/* KPIs */}
-      {summary && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px,1fr))', gap:12, marginBottom:20 }}>
-          {KPIS.map(({ key, label, Icon, color, bg, pct }) => {
+      {/* KPI row */}
+      {summary ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px,1fr))', gap: 12, marginBottom: 22 }}>
+          {KPIS.map(({ key, label, Icon, color, bg, pct }, i) => {
             const val = summary[key as keyof Summary]
             return (
-              <div key={key} style={{ background:'#fff', borderRadius:12, padding:'14px 16px', border:'1px solid #E2E8F0', boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }}>
-                <div style={{ width:34, height:34, background:bg, borderRadius:9, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:10 }}>
-                  <Icon size={17} strokeWidth={1.8} color={color} />
+              <div key={key} className={`kpi-card anim-fade-up delay-${i+1}`}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                  <Icon size={18} color={color} strokeWidth={1.8} />
                 </div>
-                <div style={{ fontSize:22, fontWeight:800, color:'#0F172A', letterSpacing:'-0.03em' }}>{val}{pct?'%':''}</div>
-                <div style={{ fontSize:11, color:'#64748B', marginTop:2, fontWeight:500 }}>{label}</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1 }}>
+                  {val}{pct ? '%' : ''}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5, fontWeight: 500 }}>{label}</div>
               </div>
             )
           })}
         </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 12, marginBottom: 22 }}>
+          {Array.from({length:7}).map((_,i) => <div key={i} className="skeleton" style={{ height: 100 }} />)}
+        </div>
       )}
 
+      {/* Main trend chart */}
       {monthly.length > 0 && (
-        <div style={{ background:'#fff', borderRadius:14, padding:'20px 24px', border:'1px solid #E2E8F0', boxShadow:'0 1px 4px rgba(0,0,0,0.05)', marginBottom:16 }}>
-          <h2 style={{ fontSize:14, fontWeight:700, color:'#0F172A', marginBottom:16 }}>Monthly Attendance Trend</h2>
+        <div className="chart-card anim-fade-up delay-3" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+            <div className="chart-title" style={{ marginBottom: 0 }}>
+              <TrendingUp size={15} color="var(--brand-500)" strokeWidth={2} />
+              Monthly Attendance Trend
+            </div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 11 }}>
+              {[{c:'#4f46e5',l:'Present'},{c:'#f59e0b',l:'Late'},{c:'#ef4444',l:'Absent'}].map(({c,l}) => (
+                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-3)' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: c, display: 'inline-block' }} />
+                  {l}
+                </div>
+              ))}
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={monthly as {date:string;present:number;late:number;absent:number}[]}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-              <XAxis dataKey="date" tick={{fontSize:11, fill:'#94A3B8'}} tickFormatter={d => new Date(d).getDate().toString()} />
-              <YAxis tick={{fontSize:11, fill:'#94A3B8'}} />
-              <Tooltip contentStyle={{borderRadius:10, border:'1px solid #E2E8F0', fontSize:12}} />
-              <Line type="monotone" dataKey="present" stroke="#16A34A" strokeWidth={2.5} dot={false} name="Present" />
-              <Line type="monotone" dataKey="late" stroke="#D97706" strokeWidth={2} dot={false} name="Late" />
-              <Line type="monotone" dataKey="absent" stroke="#DC2626" strokeWidth={2} dot={false} name="Absent" />
-            </LineChart>
+            <AreaChart data={monthly} margin={{ top: 2, right: 4, bottom: 0, left: -20 }}>
+              <defs>
+                {[['#4f46e5','gP'],['#f59e0b','gL'],['#ef4444','gA']].map(([c,id]) => (
+                  <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={c} stopOpacity={0.25} />
+                    <stop offset="95%" stopColor={c} stopOpacity={0.02} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-3)' }} tickFormatter={d => new Date(d).getDate().toString()} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Area type="monotone" dataKey="present" stroke="#4f46e5" strokeWidth={2.5} fill="url(#gP)" name="Present" dot={false} />
+              <Area type="monotone" dataKey="late"    stroke="#f59e0b" strokeWidth={2}   fill="url(#gL)" name="Late"    dot={false} />
+              <Area type="monotone" dataKey="absent"  stroke="#ef4444" strokeWidth={1.5} fill="url(#gA)" name="Absent"  dot={false} strokeDasharray="4 3" />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-        {deptStats.length > 0 && (
-          <div style={{ background:'#fff', borderRadius:14, padding:'20px 24px', border:'1px solid #E2E8F0', boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }}>
-            <h2 style={{ fontSize:14, fontWeight:700, color:'#0F172A', marginBottom:16 }}>Dept. Attendance Rate</h2>
+      {/* Bottom row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {/* Department bar */}
+        {deptStats.length > 0 ? (
+          <div className="chart-card">
+            <div className="chart-title">
+              <Users size={15} color="var(--brand-500)" strokeWidth={2} />
+              Department Attendance Rate
+            </div>
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={deptStats as {department:string;attendance_rate:number}[]} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                <XAxis type="number" domain={[0,100]} tick={{fontSize:11, fill:'#94A3B8'}} />
-                <YAxis dataKey="department" type="category" tick={{fontSize:11, fill:'#94A3B8'}} width={80} />
-                <Tooltip formatter={v => `${v}%`} contentStyle={{borderRadius:10, fontSize:12}} />
-                <Bar dataKey="attendance_rate" fill="#2563EB" radius={[0,6,6,0]} name="Rate %" />
+              <BarChart data={deptStats} layout="vertical" margin={{ left: 0, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                <XAxis type="number" domain={[0,100]} tick={{ fontSize: 10, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} tickFormatter={v=>`${v}%`} />
+                <YAxis dataKey="department" type="category" tick={{ fontSize: 11, fill: 'var(--text-2)' }} width={90} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="attendance_rate" name="rate" radius={[0,6,6,0]}>
+                  {deptStats.map((d:any, i:number) => (
+                    <Cell key={i} fill={d.attendance_rate >= 90 ? '#10b981' : d.attendance_rate >= 75 ? '#f59e0b' : '#ef4444'} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
+        ) : (
+          <div className="chart-card">
+            <div className="chart-title"><Users size={15} color="var(--brand-500)" strokeWidth={2} />Department Attendance</div>
+            <div className="empty-state" style={{ padding: '30px 0' }}>
+              <BarChart2 size={36} strokeWidth={1.2} />
+              <p>No department data yet</p>
+            </div>
+          </div>
         )}
-        {leaveStats.length > 0 && (
-          <div style={{ background:'#fff', borderRadius:14, padding:'20px 24px', border:'1px solid #E2E8F0', boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }}>
-            <h2 style={{ fontSize:14, fontWeight:700, color:'#0F172A', marginBottom:16 }}>Leave Distribution</h2>
+
+        {/* Leave pie */}
+        {leaveStats.length > 0 ? (
+          <div className="chart-card">
+            <div className="chart-title">
+              <Plane size={15} color="var(--brand-500)" strokeWidth={2} />
+              Leave Distribution
+            </div>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={leaveStats as {name:string;days:number}[]} dataKey="days" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({name,percent}) => `${name} ${Math.round(percent*100)}%`} labelLine={false} fontSize={10}>
-                  {(leaveStats as {name:string}[]).map((_,i) => <Cell key={i} fill={PIE_COLORS[i%PIE_COLORS.length]} />)}
+                <Pie data={leaveStats} dataKey="days" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={36} paddingAngle={3}
+                  label={({ name, percent }) => percent > 0.06 ? `${name} ${Math.round(percent*100)}%` : ''} labelLine={false} fontSize={10}>
+                  {leaveStats.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={v => `${v} days`} contentStyle={{borderRadius:10, fontSize:12}} />
+                <Tooltip formatter={(v:any) => [`${v} days`]} contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid var(--border)' }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
-        )}
-        {deptStats.length === 0 && leaveStats.length === 0 && (
-          <div style={{ gridColumn:'1/-1', padding:56, textAlign:'center', background:'#fff', borderRadius:14, border:'1px solid #E2E8F0' }}>
-            <BarChart2 size={36} color="#E2E8F0" strokeWidth={1.2} style={{ display:'block', margin:'0 auto 12px' }} />
-            <p style={{ fontWeight:600, color:'#374151' }}>No data yet</p>
-            <p style={{ fontSize:12, color:'#94A3B8', marginTop:4 }}>Analytics will appear once employees start checking in</p>
+        ) : (
+          <div className="chart-card">
+            <div className="chart-title"><Plane size={15} color="var(--brand-500)" strokeWidth={2} />Leave Distribution</div>
+            <div className="empty-state" style={{ padding: '30px 0' }}>
+              <Plane size={36} strokeWidth={1.2} />
+              <p>No leave data this month</p>
+            </div>
           </div>
         )}
       </div>
+
+      {loading && (
+        <div style={{ position: 'fixed', bottom: 20, right: 24, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--text)', color: 'var(--surface)', padding: '8px 14px', borderRadius: 99, fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'fadeUp 0.2s ease' }}>
+          <span className="spinner spinner-sm" style={{ borderTopColor: 'var(--surface)' }} />
+          Loading analytics...
+        </div>
+      )}
     </div>
   )
 }
