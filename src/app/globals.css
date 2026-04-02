@@ -570,3 +570,24 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
 .att-absent   { color: #ef4444; }
 .att-leave    { color: #8b5cf6; }
 .att-weekend  { color: var(--text-3); }
+
+/* ─── ADDITIONAL UTILITY CLASSES ─── */
+.page-sm { max-width: 800px; }
+.page-md { max-width: 1100px; }
+
+/* Dark mode drawer */
+[data-theme="dark"] .drawer-panel { background: var(--surface-2); border-color: var(--border); }
+[data-theme="dark"] .modal-panel  { background: var(--surface-2); }
+[data-theme="dark"] .cmd-panel    { background: var(--surface-2); }
+
+/* Btn icon variants */
+.btn-icon     { padding: 8px;  aspect-ratio: 1; }
+.btn-icon-sm  { padding: 5px;  aspect-ratio: 1; }
+.btn-icon-xs  { padding: 3px;  aspect-ratio: 1; }
+
+/* Ensure drawer panel overlay */
+.drawer-overlay { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); animation:fadeIn 0.15s ease; }
+.drawer-panel   { position:fixed; top:0; right:0; bottom:0; background:var(--surface); border-left:1px solid var(--border); box-shadow:-8px 0 32px rgba(0,0,0,0.12); display:flex; flex-direction:column; animation:slideRight 0.3s cubic-bezier(0.16,1,0.3,1); overflow:hidden; z-index:210; }
+
+/* Slide-right animation for drawer */
+@keyframes slideRight { from{transform:translateX(100%)} to{transform:translateX(0)} }
