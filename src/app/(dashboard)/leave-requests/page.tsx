@@ -216,7 +216,7 @@ export default function LeaveRequestsPage() {
       {showModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
           <div className="modal-panel modal-md" style={{ padding: 0 }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>New Leave Request</h2>
                 <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Submit a time-off request for approval</p>
@@ -226,7 +226,7 @@ export default function LeaveRequestsPage() {
               </button>
             </div>
 
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, flex: 1, overflowY: 'auto', minHeight: 0, background: 'var(--surface)' }}>
               {/* Leave type cards */}
               <div>
                 <label className="form-label">Leave Type</label>
@@ -277,7 +277,7 @@ export default function LeaveRequestsPage() {
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0, background: 'var(--surface)' }}>
               <button onClick={() => setShowModal(false)} className="btn btn-ghost">Cancel</button>
               <button onClick={submit} disabled={submitting || !form.start_date || !form.end_date} className="btn btn-primary" style={{ gap: 6 }}>
                 {submitting ? <><span className="spinner spinner-sm" />Submitting...</> : <><FileText size={14} strokeWidth={2} />Submit Request</>}

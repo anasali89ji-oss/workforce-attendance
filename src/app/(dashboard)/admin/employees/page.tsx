@@ -203,7 +203,7 @@ export default function AdminEmployeesPage() {
               <button onClick={() => setShowModal(false)} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><X size={16} strokeWidth={2} /></button>
             </div>
 
-            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, background: 'var(--surface)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div className="form-group">
                   <label className="form-label">Full Name *</label>

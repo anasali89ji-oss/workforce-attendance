@@ -343,7 +343,17 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
   animation: scaleIn 0.2s cubic-bezier(0.16,1,0.3,1);
   max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;
   width: 100%;
+  isolation: isolate;
+  position: relative;
 }
+.modal-body {
+  flex: 1; overflow-y: auto; min-height: 0;
+  padding: 20px 24px;
+  background: var(--surface);
+}
+.modal-body::-webkit-scrollbar { width: 5px; }
+.modal-body::-webkit-scrollbar-track { background: transparent; }
+.modal-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
 .modal-sm  { max-width: 420px; }
 .modal-md  { max-width: 560px; }
 .modal-lg  { max-width: 720px; }
@@ -359,6 +369,7 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
   display: flex; flex-direction: column;
   animation: slideOverIn 0.3s cubic-bezier(0.16,1,0.3,1);
   overflow: hidden;
+  isolation: isolate;
 }
 
 /* ─── PROGRESS ─── */
@@ -517,6 +528,7 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
 [data-theme="dark"] .kpi-card { background: var(--surface); }
 [data-theme="dark"] .data-table th { background: var(--surface-2); }
 [data-theme="dark"] .modal-panel { background: var(--surface-2); }
+[data-theme="dark"] .modal-body { background: var(--surface-2); }
 [data-theme="dark"] .input { background: var(--surface-3); color: var(--text); }
 [data-theme="dark"] .input:focus { background: var(--surface-2); }
 [data-theme="dark"] select.input { background-color: var(--surface-3); color: var(--text); }
