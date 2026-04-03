@@ -330,8 +330,9 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
 /* ─── MODAL ─── */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 300;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(6px);
+  background: rgba(2,6,23,0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex; align-items: center; justify-content: center; padding: 20px;
   animation: fadeIn 0.15s ease;
 }
@@ -345,6 +346,7 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
   width: 100%;
   isolation: isolate;
   position: relative;
+  contain: layout style;
 }
 .modal-body {
   flex: 1; overflow-y: auto; min-height: 0;
