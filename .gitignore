@@ -1,6 +1,38 @@
+```
+# Dependencies
 node_modules/
-.next/
+
+# Build outputs
+dist/
+build/
+target/
+
+# TypeScript/JavaScript
+*.js.map
+*.tsbuildinfo
+.cache/
+
+# Logs
+*.log
+
+# Environment
 .env
 .env.local
-*.log
+.env.*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Testing
+coverage/
+.nyc_output/
+.vitest-cache/
+
+# OS
 .DS_Store
+Thumbs.db
+```
