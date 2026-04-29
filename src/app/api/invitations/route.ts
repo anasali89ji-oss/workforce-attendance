@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['owner', 'admin', 'hr'].includes(user.role?.slug || '')) {
+  if (!['owner', 'admin', 'hr'].includes(user.role || '')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

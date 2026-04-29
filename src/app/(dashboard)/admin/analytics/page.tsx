@@ -66,7 +66,7 @@ export default function AnalyticsPage() {
   useEffect(() => { load() }, [load])
 
   const exportData = () => {
-    if (!monthly.length) { toast.error?.('No data to export'); return }
+    if (!monthly.length) { toast('No data to export'); return }
     const rows = [['Date','Present','Late','Absent'], ...monthly.map((r:any) => [r.date, r.present, r.late, r.absent])]
     const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv'})
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `analytics-${month}.csv`; a.click()

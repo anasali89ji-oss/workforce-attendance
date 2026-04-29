@@ -223,7 +223,7 @@ export default function KanbanPage() {
 
         <div style={{display:'flex',gap:8}}>
           {addingCol ? (
-            <div style={{display:'flex',gap:6',animation:'fadeDown 0.2s ease'}}>
+            <div style={{display:'flex',gap:6,animation:'fadeDown 0.2s ease'}}>
               <input autoFocus className="input input-sm" placeholder="Column name…" value={newColName} onChange={e=>setNewColName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addColumn();if(e.key==='Escape')setAddingCol(false)}} style={{width:180}}/>
               <button onClick={addColumn} className="btn btn-primary btn-sm">Add</button>
               <button onClick={()=>setAddingCol(false)} className="btn btn-ghost btn-sm"><X size={12} strokeWidth={2}/></button>

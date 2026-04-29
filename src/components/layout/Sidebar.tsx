@@ -175,7 +175,7 @@ export default function Sidebar({ user }: { user: CurrentUser }) {
                       width: 3, background: '#818cf8', borderRadius: '0 3px 3px 0',
                     }} />
                   )}
-                  <Icon size={16} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink: 0 }} />
+                  <Icon size={16} strokeWidth={active ? 2.5 : 1.8} {...{ style: { flexShrink: 0 } } as any} />
                   {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
                   {!collapsed && badge && badge > 0 && (
                     <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 99, lineHeight: 1.6 }}>
