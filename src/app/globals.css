@@ -330,36 +330,51 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
 /* ─── MODAL ─── */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 300;
-  background: rgba(2,6,23,0.62);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 16px;
   animation: fadeIn 0.15s ease;
+  overflow-y: auto;
 }
+/* The panel uses flex-column so header+footer stay fixed, body scrolls */
 .modal-panel {
   background: var(--surface);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-xl);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.22);
   animation: scaleIn 0.2s cubic-bezier(0.16,1,0.3,1);
-  max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;
-  width: 100%;
-  isolation: isolate;
-  position: relative;
-  contain: layout style;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;              /* panel itself does NOT scroll */
+  display: flex; flex-direction: column;
+  width: 100%; flex-shrink: 0; margin: auto;
 }
-.modal-body {
-  flex: 1; overflow-y: auto; min-height: 0;
+/* Header — never scrolls */
+.modal-header {
   padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: flex-start;
+  flex-shrink: 0;
+  background: var(--surface);    /* explicit bg prevents colour bleed */
+}
+/* Body — the ONLY scrollable part */
+.modal-body {
+  flex: 1; overflow-y: auto; padding: 20px 24px;
   background: var(--surface);
 }
-.modal-body::-webkit-scrollbar { width: 5px; }
-.modal-body::-webkit-scrollbar-track { background: transparent; }
-.modal-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
-.modal-sm  { max-width: 420px; }
-.modal-md  { max-width: 560px; }
-.modal-lg  { max-width: 720px; }
-.modal-xl  { max-width: 920px; }
+/* Footer — never scrolls */
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 10px; justify-content: flex-end;
+  flex-shrink: 0;
+  background: var(--surface);
+}
+.modal-sm  { max-width: 440px; }
+.modal-md  { max-width: 580px; }
+.modal-lg  { max-width: 760px; }
+.modal-xl  { max-width: 960px; }
 .modal-full{ max-width: calc(100vw - 40px); }
 
 /* ─── SLIDE-OVER ─── */
@@ -371,7 +386,6 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
   display: flex; flex-direction: column;
   animation: slideOverIn 0.3s cubic-bezier(0.16,1,0.3,1);
   overflow: hidden;
-  isolation: isolate;
 }
 
 /* ─── PROGRESS ─── */
@@ -530,7 +544,6 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
 [data-theme="dark"] .kpi-card { background: var(--surface); }
 [data-theme="dark"] .data-table th { background: var(--surface-2); }
 [data-theme="dark"] .modal-panel { background: var(--surface-2); }
-[data-theme="dark"] .modal-body { background: var(--surface-2); }
 [data-theme="dark"] .input { background: var(--surface-3); color: var(--text); }
 [data-theme="dark"] .input:focus { background: var(--surface-2); }
 [data-theme="dark"] select.input { background-color: var(--surface-3); color: var(--text); }
@@ -584,24 +597,3 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
 .att-absent   { color: #ef4444; }
 .att-leave    { color: #8b5cf6; }
 .att-weekend  { color: var(--text-3); }
-
-/* ─── ADDITIONAL UTILITY CLASSES ─── */
-.page-sm { max-width: 800px; }
-.page-md { max-width: 1100px; }
-
-/* Dark mode drawer */
-[data-theme="dark"] .drawer-panel { background: var(--surface-2); border-color: var(--border); }
-[data-theme="dark"] .modal-panel  { background: var(--surface-2); }
-[data-theme="dark"] .cmd-panel    { background: var(--surface-2); }
-
-/* Btn icon variants */
-.btn-icon     { padding: 8px;  aspect-ratio: 1; }
-.btn-icon-sm  { padding: 5px;  aspect-ratio: 1; }
-.btn-icon-xs  { padding: 3px;  aspect-ratio: 1; }
-
-/* Ensure drawer panel overlay */
-.drawer-overlay { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); animation:fadeIn 0.15s ease; }
-.drawer-panel   { position:fixed; top:0; right:0; bottom:0; background:var(--surface); border-left:1px solid var(--border); box-shadow:-8px 0 32px rgba(0,0,0,0.12); display:flex; flex-direction:column; animation:slideRight 0.3s cubic-bezier(0.16,1,0.3,1); overflow:hidden; z-index:210; }
-
-/* Slide-right animation for drawer */
-@keyframes slideRight { from{transform:translateX(100%)} to{transform:translateX(0)} }

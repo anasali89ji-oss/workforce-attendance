@@ -194,8 +194,8 @@ export default function AdminEmployeesPage() {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
-          <div className="modal-panel modal-lg" style={{ maxHeight: '85vh' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <div className="modal-panel modal-lg">
+            <div className="modal-header">
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{editingId ? 'Edit Employee' : 'Add New Employee'}</h2>
                 <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{editingId ? 'Update employee information' : 'Fill in the details to add a team member'}</p>
@@ -203,7 +203,7 @@ export default function AdminEmployeesPage() {
               <button onClick={() => setShowModal(false)} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><X size={16} strokeWidth={2} /></button>
             </div>
 
-            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, background: 'var(--surface)' }}>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div className="form-group">
                   <label className="form-label">Full Name *</label>
@@ -258,7 +258,7 @@ export default function AdminEmployeesPage() {
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
+            <div className="modal-footer">
               <button onClick={() => setShowModal(false)} className="btn btn-ghost">Cancel</button>
               <button onClick={save} disabled={submitting} className="btn btn-primary" style={{ gap: 6 }}>
                 {submitting ? <><span className="spinner spinner-sm" />Saving...</> : <><Check size={14} strokeWidth={2.5} />{editingId ? 'Save Changes' : 'Add Employee'}</>}

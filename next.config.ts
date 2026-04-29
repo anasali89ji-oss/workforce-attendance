@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   images: { unoptimized: true },
-  experimental: { serverComponentsExternalPackages: [] },
+  // serverComponentsExternalPackages was renamed in Next.js 15+
+  serverExternalPackages: ['@supabase/supabase-js', 'bcryptjs'],
 }
 
 export default nextConfig

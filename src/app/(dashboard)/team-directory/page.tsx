@@ -179,100 +179,56 @@ export default function TeamDirectoryPage() {
       {/* Profile slide-over */}
       {selected && (
         <>
-          {/* Backdrop */}
-          <div
-            style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.45)', zIndex: 200, backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', animation: 'tdFadeIn 0.18s ease' }}
-            onClick={() => setSelected(null)}
-          />
-
-          {/* Panel */}
-          <div className="slide-over" style={{ width: 400, zIndex: 210, contain: 'layout style', isolation: 'isolate' }}>
-
-            {/* Gradient header */}
-            <div style={{
-              background: `linear-gradient(145deg, ${getAvatarColor(selected.full_name)}14 0%, var(--surface) 100%)`,
-              borderBottom: '1px solid var(--border)', flexShrink: 0, position: 'relative', overflow: 'hidden',
-            }}>
-              {/* Accent stripe */}
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${getAvatarColor(selected.full_name)}, ${getAvatarColor(selected.full_name)}60)` }} />
-              <div style={{ padding: '22px 22px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 3 }}>
-                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                  {/* Avatar */}
-                  <div style={{
-                    width: 56, height: 56, borderRadius: 16, flexShrink: 0,
-                    background: `${getAvatarColor(selected.full_name)}1a`,
-                    border: `2px solid ${getAvatarColor(selected.full_name)}35`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: getAvatarColor(selected.full_name), fontWeight: 800, fontSize: 20,
-                    boxShadow: `0 4px 14px ${getAvatarColor(selected.full_name)}25`,
-                    position: 'relative',
-                  }}>
-                    {getInitials(selected.full_name)}
-                    {selected.is_active && (
-                      <span style={{ position: 'absolute', bottom: -2, right: -2, width: 11, height: 11, borderRadius: '50%', background: '#10b981', border: '2.5px solid var(--surface)', display: 'block' }} />
-                    )}
-                  </div>
-                  <div style={{ paddingTop: 2 }}>
-                    <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--text)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>{selected.full_name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>{selected.position || selected.department || 'No position set'}</div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                      <span className="badge" style={{ background: ROLE_META[selected.role]?.bg || '#f8fafc', color: ROLE_META[selected.role]?.color || '#64748b', border: `1px solid ${ROLE_META[selected.role]?.color || '#64748b'}22`, textTransform: 'capitalize', fontSize: 10, fontWeight: 700 }}>{selected.role}</span>
-                      <span className={`badge ${selected.is_active ? 'badge-success' : 'badge-default'}`} style={{ fontSize: 10 }}>{selected.is_active ? 'Active' : 'Inactive'}</span>
-                    </div>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.15s ease' }} onClick={() => setSelected(null)} />
+          <div className="slide-over" style={{ width: 420, zIndex: 210, animation: 'slideOverIn 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
+            {/* Header */}
+            <div className="modal-header">
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 14,
+                  background: `${getAvatarColor(selected.full_name)}18`,
+                  border: `2px solid ${getAvatarColor(selected.full_name)}30`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: getAvatarColor(selected.full_name), fontWeight: 800, fontSize: 18, flexShrink: 0,
+                }}>
+                  {getInitials(selected.full_name)}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--text)' }}>{selected.full_name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{selected.position || selected.department || 'No position set'}</div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    <span className="badge" style={{ background: ROLE_META[selected.role]?.bg || '#f8fafc', color: ROLE_META[selected.role]?.color || '#64748b', border: `1px solid ${ROLE_META[selected.role]?.color || '#64748b'}20`, textTransform: 'capitalize', fontSize: 10 }}>{selected.role}</span>
+                    <span className={`badge ${selected.is_active ? 'badge-success' : 'badge-default'}`} style={{ fontSize: 10 }}>{selected.is_active ? 'Active' : 'Inactive'}</span>
                   </div>
                 </div>
-                <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 6, borderRadius: 8, display: 'flex', transition: 'all 0.15s', flexShrink: 0 }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = 'var(--surface-2)'; el.style.color = 'var(--text)' }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = 'none'; el.style.color = 'var(--text-3)' }}
-                >
-                  <X size={16} strokeWidth={2} />
-                </button>
               </div>
+              <button onClick={() => setSelected(null)} className="btn btn-ghost btn-icon" style={{ padding: 6 }}>
+                <X size={16} strokeWidth={2} />
+              </button>
             </div>
 
-            {/* Details list */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', minHeight: 0 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Details */}
+            <div className="modal-body">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {[
-                  { label: 'Employee ID',  value: selected.employee_id || '—', Icon: Hash },
-                  { label: 'Email',        value: selected.email,               Icon: Mail },
-                  { label: 'Phone',        value: selected.phone || '—',        Icon: Phone },
-                  { label: 'Department',   value: selected.department || '—',   Icon: Building2 },
-                  { label: 'Position',     value: selected.position || '—',     Icon: Users },
-                  { label: 'Joined',       value: selected.joining_date ? new Date(selected.joining_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '—', Icon: Calendar },
+                  { label: 'Employee ID', value: selected.employee_id || '—', Icon: Hash },
+                  { label: 'Email Address', value: selected.email, Icon: Mail },
+                  { label: 'Phone', value: selected.phone || '—', Icon: Phone },
+                  { label: 'Department', value: selected.department || '—', Icon: Building2 },
+                  { label: 'Position', value: selected.position || '—', Icon: Users },
+                  { label: 'Joined', value: selected.joining_date ? new Date(selected.joining_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '—', Icon: Calendar },
                 ].map(({ label, value, Icon }) => (
-                  <div key={label} style={{ display: 'flex', gap: 12, padding: '11px 12px', borderRadius: 12, transition: 'background 0.12s' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-2)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'transparent'}
-                  >
-                    <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--surface-3)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Icon size={14} color="var(--text-3)" strokeWidth={1.8} />
+                  <div key={label} style={{ display: 'flex', gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Icon size={15} color="var(--text-3)" strokeWidth={1.8} />
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{label}</div>
-                      <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, marginTop: 2 }}>{value}</div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* Footer actions */}
-            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexShrink: 0, background: 'var(--surface)' }}>
-              <a href={`mailto:${selected.email}`} style={{ flex: 1, height: 38, borderRadius: 10, border: '1px solid var(--border-strong)', background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none', transition: 'all 0.15s' }}
-                onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = 'var(--brand-50)'; el.style.color = 'var(--brand-600)'; el.style.borderColor = 'var(--brand-200)' }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = 'var(--surface-2)'; el.style.color = 'var(--text-2)'; el.style.borderColor = 'var(--border-strong)' }}
-              >
-                <Mail size={13} strokeWidth={2} />Send Email
-              </a>
-              {selected.phone && (
-                <a href={`tel:${selected.phone}`} style={{ flex: 1, height: 38, borderRadius: 10, border: '1px solid var(--border-strong)', background: 'var(--surface-2)', color: 'var(--text-2)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = '#f0fdf4'; el.style.color = '#166534'; el.style.borderColor = '#bbf7d0' }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = 'var(--surface-2)'; el.style.color = 'var(--text-2)'; el.style.borderColor = 'var(--border-strong)' }}
-                >
-                  <Phone size={13} strokeWidth={2} />Call
-                </a>
-              )}
             </div>
           </div>
         </>
@@ -280,7 +236,7 @@ export default function TeamDirectoryPage() {
 
       <style>{`
         @keyframes slideOverIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        @keyframes tdFadeIn    { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
     </div>
   )

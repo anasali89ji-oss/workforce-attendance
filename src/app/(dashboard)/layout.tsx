@@ -6,7 +6,6 @@ import Sidebar from '@/components/layout/Sidebar'
 import TopBar from '@/components/layout/TopBar'
 import { ThemeProvider } from '@/components/providers/ThemeProvider'
 import { QueryProvider } from '@/components/providers/QueryProvider'
-import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
@@ -20,7 +19,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
             <TopBar user={user} />
             <main style={{ flex: 1, overflowY: 'auto' }}>
-              <ErrorBoundary>{children}</ErrorBoundary>
+              {children}
             </main>
           </div>
         </div>
