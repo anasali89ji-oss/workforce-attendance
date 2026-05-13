@@ -1,139 +1,227 @@
-export type UserRole = 'owner' | 'admin' | 'manager' | 'worker'
+/**
+ * WorkForce Pro - Enterprise Attendance Management System
+ * Type Definitions
+ */
+
+export type UserRole = 'owner' | 'admin' | 'manager' | 'employee'
+export type UserStatus = 'active' | 'inactive' | 'suspended' | 'terminated'
+export type WorkingDay = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN'
 
 export interface Tenant {
   id: string
-  subdomain: string
   name: string
-  logo_url?: string
+  slug: string
+  logoUrl: string | null
   timezone: string
-  work_start_time: string
-  work_end_time: string
-  work_days: string
-  late_threshold: number
-  created_at: string
-  updated_at: string
+  workingHoursStart: string
+  workingHoursEnd: string
+  workingDays: WorkingDay[]
+  lateThresholdMinutes: number
+  createdAt: Date
+  updatedAt: Date
 }
 
-export interface CurrentUser {
+export interface User {
   id: string
-  tenant_id: string
+  tenantId: string
   email: string
-  full_name: string
-  first_name?: string
-  last_name?: string
-  avatar_url?: string
+  firstName: string
+  lastName: string
+  fullName: string
+  phone: string | null
+  avatarUrl: string | null
+  roleId: string | null
+  departmentId: string | null
+  positionId: string | null
+  employeeId: string | null
   role: UserRole
-  phone?: string
-  employee_id?: string
-  department?: string
-  position?: string
-  is_active: boolean
-  joining_date?: string
-  created_at: string
-  updated_at: string
-  tenant: Tenant
+  status: UserStatus
+  joinedAt: Date
+  createdAt: Date
+  updatedAt: Date
+  tenant?: Tenant
+  department?: Department
+  position?: Position
+  roleDetails?: Role
 }
+
+export interface Department {
+  id: string
+  tenantId: string
+  name: string
+  description: string | null
+  headId: string | null
+  createdAt: Date
+  updatedAt: Date
+  userCount?: number
+}
+
+export interface Position {
+  id: string
+  tenantId: string
+  departmentId: string | null
+  title: string
+  level: string | null
+  createdAt: Date
+}
+
+export interface Role {
+  id: string
+  tenantId: string
+  name: string
+  slug: string
+  description: string | null
+  color: string
+  isSystem: boolean
+  createdAt: Date
+  updatedAt: Date
+  permissions?: Permission[]
+  userCount?: number
+}
+
+export interface Permission {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  module: string
+  createdAt: Date
+}
+
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'half_day' | 'on_leave' | 'holiday' | 'weekend'
 
 export interface AttendanceLog {
   id: string
-  tenant_id: string
-  user_id: string
-  attendance_date: string
-  punch_in_at?: string
-  punch_out_at?: string
-  status: string
-  is_late: boolean
-  is_overtime: boolean
-  overtime_minutes: number
-  net_duration_minutes: number
-  timesheet_note?: string
-  user?: { full_name: string; email: string; employee_id?: string; avatar_url?: string }
-}
-
-export interface LeaveRequest {
-  id: string
-  tenant_id: string
-  user_id: string
-  leave_type: string
-  start_date: string
-  end_date: string
-  days_count: number
-  reason: string
-  status: string
-  approved_by?: string
-  approved_at?: string
-  rejection_reason?: string
-  created_at: string
-  user?: { full_name: string; email: string; avatar_url?: string }
-  approver?: { full_name: string }
-}
-
-export interface LeaveType {
-  id: string
-  tenant_id: string
-  name: string
-  code: string
-  color: string
-  days_per_year: number
+  tenantId: string
+  userId: string
+  shiftId: string | null
+  date: Date
+  clockIn: Date | null
+  clockOut: Date | null
+  status: AttendanceStatus
+  lateMinutes: number
+  overtimeMinutes: number
+  notes: string | null
+  ipAddress: string | null
+  locationLat: number | null
+  locationLng: number | null
+  createdAt: Date
+  updatedAt: Date
+  user?: User
+  shift?: Shift
 }
 
 export interface Shift {
   id: string
-  tenant_id: string
+  tenantId: string
   name: string
-  start_time: string
-  end_time: string
+  startTime: string
+  endTime: string
   color: string
-  is_night_shift: boolean
+  isNight: boolean
+  createdAt: Date
+  updatedAt: Date
 }
 
-export interface KanbanBoard {
-  id: string
-  tenant_id: string
-  name: string
-  description?: string
-  columns?: KanbanColumn[]
-}
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
-export interface KanbanColumn {
+export interface LeaveType {
   id: string
-  board_id: string
+  tenantId: string
   name: string
+  code: string
   color: string
-  position: number
-  cards?: KanbanCard[]
+  daysPerYear: number
+  carryForward: boolean
+  requiresApproval: boolean
+  createdAt: Date
 }
 
-export interface KanbanCard {
+export interface LeaveRequest {
   id: string
-  column_id: string
-  title: string
-  description?: string
-  priority: string
-  due_date?: string
-  position: number
-  labels: string[]
-  assignments?: { user?: { id: string; full_name: string; avatar_url?: string } }[]
+  tenantId: string
+  employeeId: string
+  approverId: string | null
+  leaveTypeId: string
+  startDate: Date
+  endDate: Date
+  daysCount: number
+  reason: string | null
+  status: LeaveStatus
+  approvedAt: Date | null
+  rejectedAt: Date | null
+  rejectionReason: string | null
+  createdAt: Date
+  updatedAt: Date
+  employee?: User
+  approver?: User
+  leaveType?: LeaveType
 }
 
-export interface CustomRole {
+export interface LeaveBalance {
   id: string
-  tenant_id: string
-  name: string
-  slug: string
-  description?: string
-  color: string
-  permissions: string[]
-  is_system: boolean
-  user_count?: number
+  tenantId: string
+  userId: string
+  leaveTypeId: string
+  year: number
+  totalDays: number
+  usedDays: number
+  pendingDays: number
+  availableDays: number
+  leaveType?: LeaveType
 }
 
 export interface AnalyticsSummary {
-  total_employees: number
-  present_today: number
-  absent_today: number
-  late_today: number
-  on_leave_today: number
-  attendance_rate: number
-  pending_leaves: number
+  totalEmployees: number
+  presentToday: number
+  absentToday: number
+  lateToday: number
+  onLeaveToday: number
+  attendanceRate: number
+  pendingLeaves: number
+}
+
+export interface AttendanceTrend {
+  date: string
+  present: number
+  absent: number
+  late: number
+  onLeave: number
+}
+
+export type NotificationType = 'info' | 'success' | 'warning' | 'error'
+
+export interface Notification {
+  id: string
+  tenantId: string
+  userId: string
+  title: string
+  message: string
+  type: NotificationType
+  isRead: boolean
+  actionUrl: string | null
+  createdAt: Date
+}
+
+export interface ApiResponse<T = unknown> {
+  data?: T
+  error?: string
+  success: boolean
+  message?: string
+}
+
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
+
+export interface PaginationParams {
+  page?: number
+  limit?: number
+  sortBy?: string
+  sortOrder?: 'asc' | 'desc'
+  search?: string
 }
