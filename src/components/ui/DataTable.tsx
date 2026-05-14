@@ -84,7 +84,7 @@ export function DataTable<T extends { id: string }>({
     const next = new Set(selected)
     next.has(id) ? next.delete(id) : next.add(id)
     setSelected(next)
-    onSelectionChange?.([...next])
+    onSelectionChange?.(Array.from(next))
   }
 
   const toggleAll = () => {
@@ -94,7 +94,7 @@ export function DataTable<T extends { id: string }>({
     if (allSelected) allIds.forEach(id => next.delete(id))
     else allIds.forEach(id => next.add(id))
     setSelected(next)
-    onSelectionChange?.([...next])
+    onSelectionChange?.(Array.from(next))
   }
 
   const exportCSV = () => {

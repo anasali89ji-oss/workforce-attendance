@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/auth.server'
 
 const LEAVE_TYPES = [
   { id:'annual', name:'Annual Leave', color:'#3b82f6', total_days:21, used_days:3, pending_days:0 },

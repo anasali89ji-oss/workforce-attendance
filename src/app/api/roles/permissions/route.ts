@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/auth.server'
 
 const ALL_PERMISSIONS = [
   { module: 'attendance', slug: 'attendance.view', name: 'View Attendance' },

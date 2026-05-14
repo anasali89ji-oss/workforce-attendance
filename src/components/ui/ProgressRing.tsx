@@ -3,7 +3,8 @@
 import { useEffect, useState, ReactNode } from 'react'
 
 interface ProgressRingProps {
-  value: number       // 0–100
+  value?: number
+  progress?: number  // alias for value
   size?: number
   strokeWidth?: number
   color?: string
@@ -13,23 +14,24 @@ interface ProgressRingProps {
   animate?: boolean
 }
 
-export function ProgressRing({ value, size = 64, strokeWidth = 6, color = 'var(--brand-500)', trackColor = 'var(--surface-4)', label, showValue = true, animate = true }: ProgressRingProps) {
-  const [current, setCurrent] = useState(animate ? 0 : value)
+export function ProgressRing({ value, progress, size = 64, strokeWidth = 6, color = 'var(--brand-500)', trackColor = 'var(--surface-4)', label, showValue = true, animate = true }: ProgressRingProps) {
+  const resolvedValue = value ?? progress ?? 0
+  const [current, setCurrent] = useState(animate ? 0 : resolvedValue)
 
   useEffect(() => {
-    if (!animate) { setCurrent(value); return }
+    if (!animate) { setCurrent(resolvedValue); return }
     const start = performance.now()
     const duration = 800
     const from = 0
-    const to = Math.min(100, Math.max(0, value))
+    const to = Math.min(100, Math.max(0, resolvedValue))
     const raf = (ts: number) => {
-      const progress = Math.min(1, (ts - start) / duration)
-      const ease = 1 - Math.pow(1 - progress, 3)
+      const p = Math.min(1, (ts - start) / duration)
+      const ease = 1 - Math.pow(1 - p, 3)
       setCurrent(from + (to - from) * ease)
-      if (progress < 1) requestAnimationFrame(raf)
+      if (p < 1) requestAnimationFrame(raf)
     }
     requestAnimationFrame(raf)
-  }, [value, animate])
+  }, [resolvedValue, animate])
 
   const r = (size - strokeWidth) / 2
   const circ = 2 * Math.PI * r
@@ -59,3 +61,5 @@ export function ProgressRing({ value, size = 64, strokeWidth = 6, color = 'var(-
     </div>
   )
 }
+
+export default ProgressRing

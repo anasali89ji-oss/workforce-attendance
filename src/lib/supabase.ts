@@ -1,19 +1,46 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Hardcoded fallbacks for Vercel (env vars may not be set in dashboard)
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-  || 'https://ftgmhxonpalytrnficfp.supabase.co'
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0Z21oeG9ucGFseXRybmZpY2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMzMjAyOTgsImV4cCI6MjA1ODg5NjI5OH0.EuqnxIECj7JEAWHsOVwl89vx0sWAKH0QD3lFTy2Bsck'
+// Client-side (respects RLS) — safe for browser
+export const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+      },
+    })
+  : null as never
 
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0Z21oeG9ucGFseXRybmZpY2ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDc2MzYxNCwiZXhwIjoyMDkwMzM5NjE0fQ.B71EIHIpRkspwa1FBbOvv9jmH8Ik7CXtLYva2qiWM9Q'
+// Server-side admin (bypasses RLS) — NEVER exposed to client
+export const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+  : null as never
 
-// Client-side (respects RLS)
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+// Runtime guard — throws only at request time, not at build time
+export function assertSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
+  if (!SUPABASE_SERVICE_KEY) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+  }
+}
 
-// Server-side admin (bypasses RLS)
-export const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+// Typed database helper for common queries
+export async function getTenantData(tenantId: string, table: string, options?: { limit?: number; order?: string }) {
+  const query_base = supabaseAdmin.from(table).select('*').eq('tenant_id', tenantId)
+  let query = options?.limit ? query_base.limit(options.limit) : query_base
+  if (options?.order) query = query.order(options.order, { ascending: false })
+  const { data, error } = await query
+  if (error) throw error
+  return data
+}

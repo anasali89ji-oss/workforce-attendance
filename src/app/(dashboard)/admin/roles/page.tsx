@@ -37,7 +37,7 @@ export default function RolesPage() {
   const toggleModule = (mod: string) => {
     const slugs = byModule[mod].map(p => p.slug)
     const allOn = slugs.every(s => form.permissions.includes(s))
-    setForm(f => ({ ...f, permissions: allOn ? f.permissions.filter(s=>!slugs.includes(s)) : [...new Set([...f.permissions,...slugs])] }))
+    setForm(f => ({ ...f, permissions: allOn ? f.permissions.filter(s=>!slugs.includes(s)) : Array.from(new Set([...f.permissions,...slugs])) }))
   }
 
   const startCreate = () => { setSelected(null); setCreating(true); setForm({ name:'', description:'', color:'#4f46e5', permissions:[] }) }

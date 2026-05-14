@@ -44,7 +44,7 @@ export default function TeamDirectoryPage() {
 
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
 
-  const depts = [...new Set(employees.map(e => e.department).filter(Boolean))]
+  const depts = Array.from(new Set(employees.map(e => e.department).filter(Boolean)))
   const active = employees.filter(e => e.is_active).length
 
   return (

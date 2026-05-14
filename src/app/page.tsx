@@ -1,28 +1,13 @@
-export const dynamic = 'force-dynamic'
-
 import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/lib/auth'
-import { supabaseAdmin } from '@/lib/supabase'
+import { cookies } from 'next/headers'
 
-export default async function RootPage() {
-  try {
-    const { data: tenants } = await supabaseAdmin
-      .from('tenants').select('id').limit(1)
+export default async function HomePage() {
+  const cookieStore = await cookies()
+  const hasSession = cookieStore.has('workforce_session_token')
 
-    if (!tenants || tenants.length === 0) redirect('/setup')
-
-    const { data: state } = await supabaseAdmin
-      .from('setup_wizard_state')
-      .select('is_complete')
-      .eq('tenant_id', tenants[0].id)
-      .single()
-
-    if (!state?.is_complete) redirect('/setup')
-
-    const user = await getCurrentUser()
-    if (!user) redirect('/login')
+  if (hasSession) {
     redirect('/dashboard')
-  } catch {
-    redirect('/login')
   }
+
+  redirect('/login')
 }
