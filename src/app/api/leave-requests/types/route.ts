@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/auth.server'
 
 // These match the leave_type enum exactly in the DB
 const LEAVE_TYPES = [

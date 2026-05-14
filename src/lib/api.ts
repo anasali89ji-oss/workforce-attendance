@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from './auth'
+import { getCurrentUser } from './auth.server'
 import type { CurrentUser } from '@/types'
 
 export function ok(data: unknown, status = 200) {

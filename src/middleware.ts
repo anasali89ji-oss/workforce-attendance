@@ -1,50 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const COOKIE = 'workforce_user_id'
+const SESSION_COOKIE = 'workforce_session_token'
 
-// Paths that require authentication
-const PROTECTED_PREFIXES = [
-  '/dashboard', '/attendance', '/leave-requests',
-  '/team-directory', '/kanban', '/admin',
+const PUBLIC_PATHS = [
+  '/login', '/setup', '/_next', '/favicon', '/api/auth/login',
+  '/api/auth/logout', '/api/setup', '/api/seed', '/api/health',
 ]
 
-// API routes and pages that are always public
-const PUBLIC_PREFIXES = [
-  '/login', '/setup', '/_next', '/favicon', '/api/auth/login',
-  '/api/auth/logout', '/api/setup', '/api/seed',
+const PROTECTED_PREFIXES = [
+  '/dashboard', '/attendance', '/leave-requests',
+  '/team-directory', '/kanban', '/admin', '/profile',
+  '/shifts', '/overtime', '/payroll', '/reports', '/live-map',
 ]
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+  const res = NextResponse.next()
 
-  // Always allow public paths
-  if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
-    return NextResponse.next()
+  // Security headers for all responses
+  res.headers.set('X-Frame-Options', 'DENY')
+  res.headers.set('X-Content-Type-Options', 'nosniff')
+  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)')
+  if (process.env.NODE_ENV === 'production') {
+    res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
   }
 
-  // Allow all other /api/* routes through (they do their own auth checks)
+  // Public paths always allowed
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+    return res
+  }
+
+  // Static assets
+  if (pathname.match(/\.(svg|png|jpg|jpeg|gif|ico|css|js|woff|woff2)$/)) {
+    return res
+  }
+
+  // API routes handle their own auth
   if (pathname.startsWith('/api/')) {
-    return NextResponse.next()
+    // Add CORS for API routes
+    res.headers.set('Access-Control-Allow-Origin', process.env.NEXT_PUBLIC_APP_URL || '*')
+    res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token')
+    return res
   }
 
-  // Root page - let it handle its own redirect logic
+  // Root redirect
   if (pathname === '/') {
-    return NextResponse.next()
+    return res
   }
 
   // Protect dashboard routes
   if (PROTECTED_PREFIXES.some(p => pathname.startsWith(p))) {
-    const userId = req.cookies.get(COOKIE)?.value
-    if (!userId) {
+    const sessionToken = req.cookies.get(SESSION_COOKIE)?.value
+    if (!sessionToken) {
       const url = new URL('/login', req.url)
       url.searchParams.set('next', pathname)
       return NextResponse.redirect(url)
     }
   }
 
-  return NextResponse.next()
+  return res
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png|.*\\.svg|.*\\.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\.png$|.*\.svg$|.*\.ico$).*)'],
 }

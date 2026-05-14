@@ -29,7 +29,7 @@ export default function LiveMapPage() {
 
   useEffect(() => { load(); const t = setInterval(load,30000); return () => clearInterval(t) }, [load])
 
-  const depts = ['all',...new Set(users.map(u=>u.department).filter(Boolean))]
+  const depts = ['all', ...Array.from(new Set(users.map(u=>u.department).filter(Boolean)))]
   const filtered = deptFilter==='all' ? users : users.filter(u=>u.department===deptFilter)
   const present = users.filter(u=>['punched_in','on_break'].includes(u.status)).length
 

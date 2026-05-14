@@ -1,293 +1,176 @@
 'use client'
 
+import React, { useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { toast } from 'sonner'
-import { useTheme } from '../providers/ThemeProvider'
-import type { CurrentUser } from '@/types'
+import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Clock, CalendarOff, Users, Columns2, BarChart2,
-  UserCog, ShieldCheck, Settings, LogOut, Zap, Map, ChevronRight,
-  Moon, Sun, HelpCircle, User, DollarSign, FileBarChart, Menu,
-  ChevronDown, Bell,
+  LayoutDashboard, Clock, CalendarDays, Users, KanbanSquare,
+  Settings, Shield, BarChart3, MapPin, Briefcase, FileText,
+  ChevronLeft, ChevronRight, LogOut, ChevronDown, User,
+  Wallet, Timer
 } from 'lucide-react'
+import type { CurrentUser } from '@/types'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface NavItem {
-  href: string; label: string
-  Icon: React.FC<{ size?: number; strokeWidth?: number }>
-  badge?: number; roles?: string[]
+  href: string
+  label: string
+  icon: React.ComponentType<{ className?: string; size?: number | string }>
+  admin?: boolean
 }
 
-interface NavGroup { label: string; items: NavItem[] }
-
-function buildNav(role: string): NavGroup[] {
-  const isAdmin = ['owner', 'admin'].includes(role)
-  const isManager = isAdmin || role === 'manager'
-
-  return [
-    {
-      label: 'OVERVIEW',
-      items: [
-        { href: '/dashboard',    label: 'Dashboard',    Icon: LayoutDashboard },
-        { href: '/live-map',     label: 'Live Map',     Icon: Map },
-      ],
-    },
-    {
-      label: 'WORKFORCE',
-      items: [
-        { href: '/attendance',     label: 'Attendance',     Icon: Clock },
-        { href: '/leave-requests', label: 'Leave Requests', Icon: CalendarOff },
-        { href: '/team-directory', label: 'Team Directory', Icon: Users },
-      ],
-    },
-    {
-      label: 'PRODUCTIVITY',
-      items: [
-        { href: '/kanban', label: 'Kanban Board', Icon: Columns2 },
-      ],
-    },
-    ...(isManager ? [{
-      label: 'REPORTS',
-      items: [
-        { href: '/admin/analytics', label: 'Analytics', Icon: BarChart2 },
-        { href: '/payroll',         label: 'Payroll',   Icon: DollarSign, roles: ['owner','admin'] },
-        { href: '/reports',         label: 'Reports',   Icon: FileBarChart },
-      ],
-    }] : []),
-    ...(isAdmin ? [{
-      label: 'ADMIN',
-      items: [
-        { href: '/admin/employees', label: 'Employees',          Icon: UserCog },
-        { href: '/admin/roles',     label: 'Roles & Permissions', Icon: ShieldCheck },
-        { href: '/admin/settings',  label: 'Settings',            Icon: Settings },
-      ],
-    }] : []),
-  ]
+interface NavGroup {
+  label: string
+  items: NavItem[]
 }
 
-const ROLE_HEX: Record<string, string> = {
-  owner: '#7c3aed', admin: '#2563eb', manager: '#d97706', worker: '#0891b2',
+interface SidebarProps {
+  user: CurrentUser
 }
 
-export default function Sidebar({ user }: { user: CurrentUser }) {
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Main',
+    items: [
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/attendance', label: 'Attendance', icon: Clock },
+      { href: '/leave-requests', label: 'Leave', icon: CalendarDays },
+      { href: '/overtime', label: 'Overtime', icon: Timer },
+    ]
+  },
+  {
+    label: 'Team',
+    items: [
+      { href: '/team-directory', label: 'Directory', icon: Users },
+      { href: '/shifts', label: 'Shifts', icon: Briefcase },
+      { href: '/kanban', label: 'Tasks', icon: KanbanSquare },
+      { href: '/live-map', label: 'Live Map', icon: MapPin },
+    ]
+  },
+  {
+    label: 'Finance',
+    items: [
+      { href: '/payroll', label: 'Payroll', icon: Wallet },
+      { href: '/reports', label: 'Reports', icon: FileText },
+    ]
+  },
+  {
+    label: 'Admin',
+    items: [
+      { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, admin: true },
+      { href: '/admin/employees', label: 'Employees', icon: Users, admin: true },
+      { href: '/admin/departments', label: 'Departments', icon: Briefcase, admin: true },
+      { href: '/admin/roles', label: 'Roles', icon: Shield, admin: true },
+      { href: '/admin/settings', label: 'Settings', icon: Settings, admin: true },
+    ]
+  },
+]
+
+export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
-  const { theme, toggle: toggleTheme } = useTheme()
   const [collapsed, setCollapsed] = useState(false)
-  const [userOpen, setUserOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Main', 'Team']))
+  const { isAdmin } = usePermissions()
 
-  const navGroups = buildNav(user.role)
-  const initials = user.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
-  const roleHex = ROLE_HEX[user.role] || '#64748b'
-
-  const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    toast.success('Signed out')
-    router.push('/login')
-    router.refresh()
+  const toggleGroup = (label: string) => {
+    const next = new Set(expandedGroups)
+    if (next.has(label)) next.delete(label)
+    else next.add(label)
+    setExpandedGroups(next)
   }
 
-  const isActive = (href: string) =>
-    pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    window.location.href = '/login'
+  }
 
-  const W = collapsed ? 64 : 256
-
-  return (
-    <aside style={{
-      width: W, minWidth: W, background: '#0a0f1e',
-      display: 'flex', flexDirection: 'column', height: '100vh',
-      borderRight: '1px solid rgba(255,255,255,0.05)',
-      transition: 'width 0.25s cubic-bezier(0.16,1,0.3,1)',
-      overflow: 'hidden', position: 'relative', zIndex: 40, flexShrink: 0,
-    }}>
-
-      {/* ── Brand ── */}
-      <div style={{
-        height: 64, display: 'flex', alignItems: 'center',
-        padding: '0 14px', borderBottom: '1px solid rgba(255,255,255,0.05)',
-        gap: 10, flexShrink: 0,
-      }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-          background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 2px 14px rgba(79,70,229,0.45)',
-        }}>
-          <Zap size={16} color="#fff" strokeWidth={2.5} />
+  const sidebarContent = (
+    <>
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-[var(--sidebar-border)]">
+        <div className="w-9 h-9 rounded-xl bg-[#6366f1] flex items-center justify-center flex-shrink-0">
+          <Shield size={18} className="text-white" />
         </div>
         {!collapsed && (
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: '#f1f5f9', fontWeight: 800, fontSize: 14, letterSpacing: '-0.02em', lineHeight: 1.2 }}>WorkForce Pro</div>
-            <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-              {user.tenant?.name}
-            </div>
+          <div className="overflow-hidden">
+            <div className="text-sm font-bold text-white whitespace-nowrap">WorkForce Pro</div>
+            <div className="text-[9px] text-white/40 tracking-widest uppercase whitespace-nowrap">{user.tenant.name}</div>
           </div>
         )}
-        <button onClick={() => setCollapsed(v => !v)} style={{
-          background: 'none', border: 'none', cursor: 'pointer',
-          color: 'rgba(255,255,255,0.28)', padding: 4, borderRadius: 6,
-          display: 'flex', transition: 'color 0.15s', flexShrink: 0,
-        }}
-        onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.6)')}
-        onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.28)')}
-        >
-          {collapsed ? <ChevronRight size={15} /> : <Menu size={15} />}
-        </button>
       </div>
 
-      {/* ── Nav ── */}
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '6px 8px 0', display: 'flex', flexDirection: 'column' }}>
-        {navGroups.map(group => (
-          <div key={group.label} style={{ marginBottom: 4 }}>
-            {!collapsed && (
-              <div style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.2)', padding: '8px 12px 3px',
-              }}>
-                {group.label}
-              </div>
-            )}
-            {group.items.map(({ href, label, Icon, badge, roles }) => {
-              if (roles && !roles.includes(user.role)) return null
-              const active = isActive(href)
-              return (
-                <Link
-                  key={href} href={href}
-                  title={collapsed ? label : undefined}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 10,
-                    padding: collapsed ? '9px 0' : '9px 12px',
-                    borderRadius: 10, textDecoration: 'none',
-                    color: active ? '#a5b4fc' : 'rgba(255,255,255,0.42)',
-                    background: active ? 'rgba(99,102,241,0.16)' : 'transparent',
-                    fontSize: 13, fontWeight: active ? 600 : 500,
-                    position: 'relative', transition: 'all 0.15s',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    marginBottom: 2,
-                  }}
-                  onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,255,255,0.06)'; (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,0.75)' }}}
-                  onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'; (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,0.42)' }}}
-                >
-                  {active && (
-                    <span style={{
-                      position: 'absolute', left: 0, top: '24%', bottom: '24%',
-                      width: 3, background: '#818cf8', borderRadius: '0 3px 3px 0',
-                    }} />
-                  )}
-                  <Icon size={16} strokeWidth={active ? 2.5 : 1.8} {...{ style: { flexShrink: 0 } } as any} />
-                  {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
-                  {!collapsed && badge && badge > 0 && (
-                    <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 99, lineHeight: 1.6 }}>
-                      {badge > 99 ? '99+' : badge}
-                    </span>
-                  )}
-                  {collapsed && badge && badge > 0 && (
-                    <span style={{ position: 'absolute', top: 5, right: 5, width: 7, height: 7, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0a0f1e' }} />
-                  )}
-                </Link>
-              )
-            })}
-          </div>
-        ))}
+      <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
+        {NAV_GROUPS.map(group => {
+          const visibleItems = group.items.filter(item => !item.admin || isAdmin())
+          if (visibleItems.length === 0) return null
+          const isExpanded = expandedGroups.has(group.label)
+
+          return (
+            <div key={group.label}>
+              {!collapsed && (
+                <button onClick={() => toggleGroup(group.label)} className="nav-section-label w-full flex items-center justify-between">
+                  {group.label}
+                  <ChevronDown size={10} className={`transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+                </button>
+              )}
+              {(collapsed || isExpanded) && (
+                <div className="space-y-0.5">
+                  {visibleItems.map(item => {
+                    const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+                    return (
+                      <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)}
+                        className={`nav-item ${isActive ? 'active' : ''}`} title={collapsed ? item.label : undefined}>
+                        <item.icon size={18} className="flex-shrink-0" />
+                        {!collapsed && <span className="truncate">{item.label}</span>}
+                        {isActive && !collapsed && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[var(--brand-400)]" />}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </nav>
 
-      {/* ── Bottom ── */}
-      <div style={{ padding: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <button
-          onClick={toggleTheme}
-          title={collapsed ? 'Toggle Theme' : undefined}
-          style={{
-            display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 10,
-            padding: collapsed ? '9px 0' : '9px 12px', borderRadius: 10,
-            border: 'none', background: 'transparent', cursor: 'pointer',
-            color: 'rgba(255,255,255,0.42)', fontSize: 13, fontWeight: 500,
-            justifyContent: collapsed ? 'center' : 'flex-start', width: '100%',
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.75)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.42)' }}
-        >
-          {theme === 'light' ? <Moon size={16} strokeWidth={1.8} style={{ flexShrink: 0 }} /> : <Sun size={16} strokeWidth={1.8} style={{ flexShrink: 0 }} />}
-          {!collapsed && <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>}
-        </button>
-
-        {/* User card */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setUserOpen(v => !v)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center',
-              gap: collapsed ? 0 : 10, padding: collapsed ? '10px 0' : '9px 10px',
-              borderRadius: 10, border: 'none', background: 'transparent',
-              cursor: 'pointer', justifyContent: collapsed ? 'center' : 'flex-start',
-              transition: 'background 0.15s', marginTop: 2,
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div style={{
-              width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-              background: `${roleHex}28`, border: `1.5px solid ${roleHex}45`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: roleHex, fontWeight: 800, fontSize: 11, position: 'relative',
-            }}>
-              {initials}
-              <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: '#10b981', border: '1.5px solid #0a0f1e' }} />
-            </div>
-            {!collapsed && (
-              <>
-                <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
-                  <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {user.full_name}
-                  </div>
-                  <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, textTransform: 'capitalize', marginTop: 1 }}>{user.role}</div>
-                </div>
-                <ChevronDown size={12} color="rgba(255,255,255,0.28)" strokeWidth={2} style={{ flexShrink: 0, transform: userOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-              </>
-            )}
-          </button>
-
-          {userOpen && !collapsed && (
-            <div style={{
-              position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, right: 0,
-              background: '#111c35', borderRadius: 12,
-              border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-              overflow: 'hidden', animation: 'fadeDown 0.15s ease', zIndex: 100,
-            }}>
-              {([
-                { href: '/profile', label: 'My Profile', Icon: User },
-                { href: '/admin/settings', label: 'Settings', Icon: Settings },
-              ] as const).map(({ href, label, Icon }) => (
-                <Link key={href} href={href} onClick={() => setUserOpen(false)} style={{
-                  display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px',
-                  color: 'rgba(255,255,255,0.65)', fontSize: 13, textDecoration: 'none',
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => ((e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,255,255,0.06)')}
-                onMouseLeave={e => ((e.currentTarget as HTMLAnchorElement).style.background = 'transparent')}
-                >
-                  <Icon size={14} strokeWidth={1.8} />{label}
-                </Link>
-              ))}
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 10px' }} />
-              <button
-                onClick={() => { setUserOpen(false); logout() }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px',
-                  color: '#fca5a5', fontSize: 13, width: '100%', background: 'none',
-                  border: 'none', cursor: 'pointer', transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.1)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-              >
-                <LogOut size={14} strokeWidth={1.8} />Sign Out
-              </button>
+      <div className="border-t border-[var(--sidebar-border)] p-3">
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group">
+          <div className="w-8 h-8 rounded-full bg-[#6366f1]/20 flex items-center justify-center text-xs font-bold text-[#a5b4fc] flex-shrink-0">
+            {user.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-white truncate">{user.full_name}</div>
+              <div className="text-[10px] text-white/40 truncate">{user.email}</div>
             </div>
           )}
         </div>
+        <div className="mt-1 space-y-0.5">
+          <Link href="/profile" className="nav-item text-white/40 hover:text-white/70">
+            <User size={16} />
+            {!collapsed && <span>My Profile</span>}
+          </Link>
+          <button onClick={handleLogout} className="nav-item text-white/40 hover:text-[var(--danger)] w-full">
+            <LogOut size={16} />
+            {!collapsed && <span>Sign Out</span>}
+          </button>
+        </div>
       </div>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />}
+      <button onClick={() => setMobileOpen(!mobileOpen)} className="fixed top-3 left-3 z-50 lg:hidden w-10 h-10 rounded-xl bg-[var(--sidebar-bg)] flex items-center justify-center text-white shadow-lg">
+        {mobileOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+      </button>
+      <aside className={`fixed lg:static inset-y-0 left-0 z-40 bg-[var(--sidebar-bg)] flex flex-col transition-all duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${collapsed ? 'w-[var(--sidebar-collapsed-w)]' : 'w-[var(--sidebar-w)]'}`}>
+        {sidebarContent}
+        <button onClick={() => setCollapsed(!collapsed)} className="hidden lg:flex absolute -right-3 top-20 w-6 h-6 rounded-full bg-[var(--sidebar-bg)] border border-[var(--sidebar-border)] items-center justify-center text-white/50 hover:text-white transition-colors">
+          {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+        </button>
+      </aside>
+    </>
   )
 }
