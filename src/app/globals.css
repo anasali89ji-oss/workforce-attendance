@@ -597,3 +597,18 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
 .att-absent   { color: #ef4444; }
 .att-leave    { color: #8b5cf6; }
 .att-weekend  { color: var(--text-3); }
+
+/* FIX-030: Command palette mobile responsive */
+@media (max-width: 640px) {
+  .cmd-overlay {
+    padding-top: 8vh;
+    padding-left: 12px;
+    padding-right: 12px;
+    align-items: flex-start;
+  }
+  .cmd-panel {
+    max-width: 100%;
+    border-radius: var(--radius-lg);
+    width: 100%;
+  }
+}

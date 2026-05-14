@@ -1,40 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth.server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { z } from 'zod'
 
-export async function GET() {
+const cardSchema = z.object({
+  column_id: z.string().uuid(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
+  due_date: z.string().optional().nullable(),
+  labels: z.array(z.string()).default([]),
+  assignee_ids: z.array(z.string().uuid()).default([]),
+})
+
+const moveSchema = z.object({
+  id: z.string().uuid(),
+  column_id: z.string().uuid(),
+  position: z.number().int().min(0),
+})
+
+export async function GET(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabaseAdmin
+  const { searchParams } = new URL(req.url)
+  const boardId = searchParams.get('board_id')
+
+  // Fetch boards for this tenant
+  const { data: boards } = await supabaseAdmin
     .from('kanban_boards')
-    .select(`
-      *,
-      columns:kanban_columns(
-        *,
-        cards:kanban_cards(
-          *,
-          assignments:kanban_card_assignments(*, user:users(id,first_name,last_name,avatar_url))
-        )
-      )
-    `)
+    .select('id,name,description')
     .eq('tenant_id', user.tenant_id)
     .order('created_at')
+    .limit(1)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const targetBoard = boardId || boards?.[0]?.id
+  if (!targetBoard) return NextResponse.json({ data: { boards: [], columns: [], cards: [] } })
 
-  // Sort columns and cards by position
-  const boards = (data || []).map(board => ({
-    ...board,
-    columns: (board.columns || [])
-      .sort((a: { position: number }, b: { position: number }) => a.position - b.position)
-      .map((col: { cards?: Array<{ position: number }> }) => ({
-        ...col,
-        cards: (col.cards || []).sort((a, b) => a.position - b.position),
-      })),
-  }))
+  const [colsRes, cardsRes] = await Promise.all([
+    supabaseAdmin.from('kanban_columns').select('*').eq('board_id', targetBoard).order('position'),
+    supabaseAdmin.from('kanban_cards')
+      .select('*, assignments:kanban_card_assignments(user:profiles!user_id(id,full_name,avatar_url))')
+      .in('column_id',
+        (await supabaseAdmin.from('kanban_columns').select('id').eq('board_id', targetBoard))
+          .data?.map(c => c.id) || []
+      )
+      .order('position'),
+  ])
 
-  return NextResponse.json({ data: boards })
+  return NextResponse.json({
+    data: {
+      boards,
+      board: boards?.find(b => b.id === targetBoard),
+      columns: colsRes.data || [],
+      cards: cardsRes.data || [],
+    }
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -42,85 +63,87 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { action } = body
 
-  if (action === 'create_board') {
-    const { data, error } = await supabaseAdmin
-      .from('kanban_boards')
-      .insert({ tenant_id: user.tenant_id, name: body.name, description: body.description, created_by: user.id })
-      .select()
-      .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    // Default columns
-    await supabaseAdmin.from('kanban_columns').insert([
-      { board_id: data.id, name: 'To Do', color: '#6b7280', position: 0 },
-      { board_id: data.id, name: 'In Progress', color: '#3b82f6', position: 1 },
-      { board_id: data.id, name: 'Done', color: '#10b981', position: 2 },
-    ])
-    return NextResponse.json({ data })
-  }
-
-  if (action === 'create_card') {
-    const { column_id, title, description, priority, due_date, labels } = body
-    // Get max position
-    const { data: existing } = await supabaseAdmin
-      .from('kanban_cards')
-      .select('position')
-      .eq('column_id', column_id)
-      .order('position', { ascending: false })
-      .limit(1)
-
-    const position = existing?.[0]?.position !== undefined ? existing[0].position + 1 : 0
-
-    const { data, error } = await supabaseAdmin
-      .from('kanban_cards')
-      .insert({ column_id, title, description, priority: priority || 'medium', due_date, labels: labels || [], position })
-      .select()
-      .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ data })
-  }
-
-  if (action === 'move_card') {
-    const { card_id, column_id, position } = body
+  if (body.type === 'move') {
+    const result = moveSchema.safeParse(body)
+    if (!result.success) {
+      return NextResponse.json({ error: 'Invalid input', details: result.error.flatten().fieldErrors }, { status: 400 })
+    }
+    const { id, column_id, position } = result.data
     const { data, error } = await supabaseAdmin
       .from('kanban_cards')
       .update({ column_id, position, updated_at: new Date().toISOString() })
-      .eq('id', card_id)
+      .eq('id', id)
       .select()
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ data })
   }
 
-  if (action === 'update_card') {
-    const { card_id, ...updates } = body
-    delete updates.action
-    const { data, error } = await supabaseAdmin
-      .from('kanban_cards')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', card_id)
-      .select()
-      .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ data })
+  const result = cardSchema.safeParse(body)
+  if (!result.success) {
+    return NextResponse.json({ error: 'Invalid input', details: result.error.flatten().fieldErrors }, { status: 400 })
   }
 
-  if (action === 'delete_card') {
-    await supabaseAdmin.from('kanban_cards').delete().eq('id', body.card_id)
-    return NextResponse.json({ success: true })
+  const { assignee_ids, ...cardData } = result.data
+
+  // Get max position in column
+  const { data: existing } = await supabaseAdmin
+    .from('kanban_cards').select('position').eq('column_id', cardData.column_id).order('position', { ascending: false }).limit(1)
+  const position = (existing?.[0]?.position ?? -1) + 1
+
+  const { data: card, error } = await supabaseAdmin
+    .from('kanban_cards')
+    .insert({ ...cardData, position })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Add assignees
+  if (assignee_ids.length > 0) {
+    await supabaseAdmin.from('kanban_card_assignments').insert(
+      assignee_ids.map(uid => ({ card_id: card.id, user_id: uid }))
+    )
   }
 
-  if (action === 'assign_user') {
-    const { card_id, user_id, assign } = body
-    if (assign) {
-      await supabaseAdmin.from('kanban_card_assignments').upsert({ card_id, user_id })
-    } else {
-      await supabaseAdmin.from('kanban_card_assignments').delete().eq('card_id', card_id).eq('user_id', user_id)
+  return NextResponse.json({ data: card }, { status: 201 })
+}
+
+export async function PATCH(req: NextRequest) {
+  const user = await getCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id, assignee_ids, ...updates } = await req.json()
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+  const { data, error } = await supabaseAdmin
+    .from('kanban_cards')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (Array.isArray(assignee_ids)) {
+    await supabaseAdmin.from('kanban_card_assignments').delete().eq('card_id', id)
+    if (assignee_ids.length > 0) {
+      await supabaseAdmin.from('kanban_card_assignments').insert(
+        assignee_ids.map((uid: string) => ({ card_id: id, user_id: uid }))
+      )
     }
-    return NextResponse.json({ success: true })
   }
 
-  return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  return NextResponse.json({ data })
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await getCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await req.json()
+  const { error } = await supabaseAdmin.from('kanban_cards').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
 }

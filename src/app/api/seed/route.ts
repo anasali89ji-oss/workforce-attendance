@@ -1,56 +1,90 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
 
-export async function POST(req: Request) {
+// FIX-002: Use env vars, never hardcode credentials
+const SEED_SECRET = process.env.SEED_SECRET
+
+export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  if (searchParams.get('secret') !== 'workforce-seed-2024') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const ADMIN_EMAIL = 'admin@aiscern.com'
-  const ADMIN_PASSWORD = 'Admin@123456'
+  // FIX-013: Strong env-var secret, not hardcoded string
+  if (!SEED_SECRET || searchParams.get('secret') !== SEED_SECRET) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
-  const { data: existing } = await supabaseAdmin.from('profiles').select('id').eq('email', ADMIN_EMAIL).single()
-  if (existing) return NextResponse.json({ message: 'Already seeded', email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+  // Disable in production unless explicitly opted in
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED_IN_PRODUCTION !== 'true') {
+    return NextResponse.json({ error: 'Seed endpoint disabled in production' }, { status: 403 })
+  }
 
-  const { data: tenant, error: tErr } = await supabaseAdmin.from('tenants')
-    .insert({ name: 'Aiscern', subdomain: 'aiscern', timezone: 'Asia/Karachi', work_start_time: '09:00', work_end_time: '18:00', work_days: '1,2,3,4,5', late_threshold: 15 })
-    .select().single()
-  if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 })
+  try {
+    // Create tenant
+    const { data: tenant, error: tenantErr } = await supabaseAdmin
+      .from('tenants')
+      .insert({
+        name: 'Demo Company',
+        slug: `demo-${Date.now()}`,
+        timezone: 'UTC',
+        working_hours_start: '09:00',
+        working_hours_end: '18:00',
+        working_days: ['MON', 'TUE', 'WED', 'THU', 'FRI'],
+        late_threshold: 15,
+      })
+      .select()
+      .single()
 
-  await supabaseAdmin.from('setup_wizard_state').insert({ tenant_id: tenant.id, step: 5, is_complete: true, data: {} })
+    if (tenantErr || !tenant) throw new Error(tenantErr?.message || 'Failed to create tenant')
 
-  await supabaseAdmin.from('leave_types').insert([
-    { tenant_id: tenant.id, name: 'Annual Leave', code: 'AL', color: '#3b82f6', days_per_year: 21 },
-    { tenant_id: tenant.id, name: 'Sick Leave', code: 'SL', color: '#ef4444', days_per_year: 10 },
-    { tenant_id: tenant.id, name: 'Casual Leave', code: 'CL', color: '#f59e0b', days_per_year: 7 },
-    { tenant_id: tenant.id, name: 'Unpaid Leave', code: 'UL', color: '#6b7280', days_per_year: 0 },
-  ])
+    // FIX-011+012: Create profile with bcrypt hash (custom auth, not Supabase Auth)
+    const adminEmail = process.env.SEED_ADMIN_EMAIL
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD
 
-  await supabaseAdmin.from('shifts').insert({ tenant_id: tenant.id, name: 'General Shift', start_time: '09:00', end_time: '18:00', color: '#3b82f6', days_of_week: '1,2,3,4,5' })
+    if (!adminEmail || !adminPassword) {
+      throw new Error('SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD env vars required')
+    }
 
-  const boardId = crypto.randomUUID()
-  await supabaseAdmin.from('kanban_boards').insert({ id: boardId, tenant_id: tenant.id, name: 'Team Tasks', created_by: tenant.id })
-  await supabaseAdmin.from('kanban_columns').insert([
-    { board_id: boardId, name: 'To Do', color: '#6b7280', position: 0 },
-    { board_id: boardId, name: 'In Progress', color: '#3b82f6', position: 1 },
-    { board_id: boardId, name: 'Review', color: '#f59e0b', position: 2 },
-    { board_id: boardId, name: 'Done', color: '#10b981', position: 3 },
-  ])
+    const password_hash = await bcrypt.hash(adminPassword, 12)
+    const employee_id = `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
 
-  await supabaseAdmin.from('custom_roles').insert([
-    { tenant_id: tenant.id, name: 'Owner', slug: 'owner', color: '#7c3aed', is_system: true, permissions: ['*'] },
-    { tenant_id: tenant.id, name: 'Admin', slug: 'admin', color: '#2563eb', is_system: true, permissions: ['attendance.manage','employees.manage','leave.approve','roles.manage','analytics.view','kanban.manage','settings.manage'] },
-    { tenant_id: tenant.id, name: 'Manager', slug: 'manager', color: '#d97706', is_system: true, permissions: ['attendance.view','attendance.clock','employees.view','leave.approve','kanban.manage','analytics.view'] },
-    { tenant_id: tenant.id, name: 'Worker', slug: 'worker', color: '#0891b2', is_system: true, permissions: ['attendance.clock','leave.apply','kanban.view'] },
-  ])
+    const { error: profileErr } = await supabaseAdmin.from('profiles').insert({
+      tenant_id: tenant.id,
+      email: adminEmail.toLowerCase(),
+      password_hash,
+      full_name: 'Admin User',
+      first_name: 'Admin',
+      last_name: 'User',
+      role: 'owner',
+      employee_id,
+      is_active: true,
+    })
 
-  const hash = await bcrypt.hash(ADMIN_PASSWORD, 12)
-  const { error: uErr } = await supabaseAdmin.from('profiles').insert({
-    tenant_id: tenant.id, email: ADMIN_EMAIL, password_hash: hash,
-    full_name: 'Super Admin', first_name: 'Super', last_name: 'Admin',
-    role: 'owner', employee_id: 'EMP-001', is_active: true,
-  })
-  if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
+    if (profileErr) throw new Error(profileErr.message)
 
-  return NextResponse.json({ success: true, email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+    // Create default leave types
+    await supabaseAdmin.from('leave_types').insert([
+      { tenant_id: tenant.id, name: 'Annual Leave', code: 'annual', color: '#3b82f6', days_per_year: 20, requires_approval: true },
+      { tenant_id: tenant.id, name: 'Sick Leave', code: 'sick', color: '#ef4444', days_per_year: 10, requires_approval: false },
+      { tenant_id: tenant.id, name: 'Emergency', code: 'emergency', color: '#f59e0b', days_per_year: 5, requires_approval: true },
+      { tenant_id: tenant.id, name: 'Unpaid Leave', code: 'unpaid', color: '#6b7280', days_per_year: 0, requires_approval: true },
+    ])
+
+    // Create default departments
+    await supabaseAdmin.from('departments').insert([
+      { tenant_id: tenant.id, name: 'Engineering' },
+      { tenant_id: tenant.id, name: 'HR' },
+      { tenant_id: tenant.id, name: 'Operations' },
+    ])
+
+    // FIX-014: No password in response
+    return NextResponse.json({
+      success: true,
+      message: 'Database seeded successfully',
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+      admin: { email: adminEmail },
+    })
+  } catch (err) {
+    console.error('[Seed Error]', err)
+    return NextResponse.json({ error: 'Seed failed', details: (err as Error).message }, { status: 500 })
+  }
 }

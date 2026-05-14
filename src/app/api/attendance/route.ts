@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('user_id')
     const month = searchParams.get('month')
+    const date = searchParams.get('date')
     const limit = Math.min(parseInt(searchParams.get('limit') || '30'), 100)
     const offset = parseInt(searchParams.get('offset') || '0')
 
@@ -51,7 +52,9 @@ export async function GET(req: NextRequest) {
       query = query.eq('user_id', userId)
     }
 
-    if (month) {
+    if (date && /^\\d{4}-\\d{2}-\\d{2}$/.test(date)) {
+      query = query.eq('attendance_date', date)
+    } else if (month && /^\\d{4}-\\d{2}$/.test(month)) {
       query = query.gte('attendance_date', `${month}-01`).lte('attendance_date', `${month}-31`)
     }
 
@@ -60,8 +63,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ data, total: count, offset, limit })
   } catch (error) {
-    const { message, status, code } = handleApiError(error)
-    return NextResponse.json({ error: message, code }, { status })
+    return handleApiError(error)
   }
 }
 
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest) {
       .select('*')
       .eq('user_id', user.id)
       .eq('attendance_date', today)
-      .single()
+      .maybeSingle()
 
     if (action === 'clock_in') {
       if (existing?.punch_in_at) {
@@ -213,7 +215,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action', code: 'INVALID_ACTION' }, { status: 400 })
   } catch (error) {
-    const { message, status, code } = handleApiError(error)
-    return NextResponse.json({ error: message, code }, { status })
+    return handleApiError(error)
   }
 }

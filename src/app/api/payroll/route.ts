@@ -1,61 +1,97 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth.server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { z } from 'zod'
+
+const payrollSchema = z.object({
+  user_id: z.string().uuid(),
+  period_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  base_salary: z.number().min(0),
+  overtime_pay: z.number().min(0).default(0),
+  deductions: z.number().min(0).default(0),
+  bonuses: z.number().min(0).default(0),
+})
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { searchParams } = new URL(req.url)
-  const period = searchParams.get('period') || new Date().toISOString().slice(0, 7)
+  const period = searchParams.get('period')
+  const userId = searchParams.get('user_id')
+  const isPrivileged = ['owner', 'admin'].includes(user.role)
 
-  const [y, m] = period.split('-').map(Number)
-  const start = `${period}-01`
-  const end = new Date(y, m, 0).toISOString().split('T')[0]
-
-  const { data: profiles } = await supabaseAdmin
-    .from('profiles')
-    .select('id, full_name, employee_id, department, email')
+  let query = supabaseAdmin
+    .from('payroll_records')
+    .select('*, user:profiles!user_id(id,full_name,email,department,employee_id)')
     .eq('tenant_id', user.tenant_id)
-    .eq('is_active', true)
+    .order('period_start', { ascending: false })
 
-  const { data: attLogs } = await supabaseAdmin
-    .from('attendance_logs')
-    .select('user_id, net_duration_minutes, overtime_minutes, is_overtime, attendance_date')
-    .eq('tenant_id', user.tenant_id)
-    .gte('attendance_date', start)
-    .lte('attendance_date', end)
+  if (!isPrivileged) query = query.eq('user_id', user.id)
+  else if (userId) query = query.eq('user_id', userId)
+  if (period && /^\d{4}-\d{2}$/.test(period)) {
+    query = query.gte('period_start', `${period}-01`).lte('period_end', `${period}-31`)
+  }
 
-  const records = (profiles || []).map(p => {
-    const logs = (attLogs || []).filter(l => l.user_id === p.id)
-    const totalMins = logs.reduce((a, l) => a + (l.net_duration_minutes || 0), 0)
-    const otMins = logs.reduce((a, l) => a + (l.overtime_minutes || 0), 0)
-    const baseSalary = 50000 // default; in real app from profiles
-    const otRate = baseSalary / (22 * 8 * 60) * 1.5
-    const otPay = Math.round(otMins * otRate)
-    const deductions = Math.round(baseSalary * 0.1) // 10% tax placeholder
-    return {
-      id: p.id,
-      user_id: p.id,
-      user: { full_name: p.full_name, employee_id: p.employee_id, department: p.department, email: p.email },
-      period_start: start,
-      period_end: end,
-      base_salary: baseSalary,
-      overtime_pay: otPay,
-      deductions,
-      net_pay: baseSalary + otPay - deductions,
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ data })
+}
+
+export async function POST(req: NextRequest) {
+  const user = await getCurrentUser()
+  if (!user || !['owner', 'admin'].includes(user.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const body = await req.json()
+  const result = payrollSchema.safeParse(body)
+  if (!result.success) {
+    return NextResponse.json({ error: 'Invalid input', details: result.error.flatten().fieldErrors }, { status: 400 })
+  }
+
+  const { base_salary, overtime_pay = 0, deductions = 0, bonuses = 0 } = result.data
+  const net_pay = base_salary + overtime_pay + bonuses - deductions
+
+  const { data, error } = await supabaseAdmin
+    .from('payroll_records')
+    .insert({
+      tenant_id: user.tenant_id,
+      ...result.data,
+      net_pay,
       status: 'draft',
-      total_hours: Math.floor(totalMins / 60),
-      overtime_hours: Math.floor(otMins / 60),
-      days_worked: logs.length,
-    }
-  })
+    })
+    .select()
+    .single()
 
-  return NextResponse.json({ data: records })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ data }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
   const user = await getCurrentUser()
-  if (!user || !['owner','admin'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const body = await req.json()
-  return NextResponse.json({ data: { ...body, status: 'processed' } })
+  if (!user || !['owner', 'admin'].includes(user.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { id, status } = await req.json()
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  if (!['draft', 'processed', 'paid'].includes(status)) {
+    return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+  }
+
+  const updates: Record<string, unknown> = { status }
+  if (status === 'processed') updates.processed_at = new Date().toISOString()
+
+  const { data, error } = await supabaseAdmin
+    .from('payroll_records')
+    .update(updates)
+    .eq('id', id)
+    .eq('tenant_id', user.tenant_id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ data })
 }

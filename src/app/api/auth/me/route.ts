@@ -39,7 +39,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ user: safeUser })
   } catch (error) {
-    const { message, status, code } = handleApiError(error)
-    return NextResponse.json({ error: message, code }, { status })
+    return handleApiError(error)
   }
 }

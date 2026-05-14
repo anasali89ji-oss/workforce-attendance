@@ -118,9 +118,9 @@ async function setupShifts(data: { tenant_id: string; shifts: { name: string; st
   return NextResponse.json({ success: true })
 }
 
-async function completeSetup(data: { tenant_id: string }) {
+async function completeSetup(data: { tenant_id: string; owner_id?: string }) {
   const boardId = crypto.randomUUID()
-  await supabaseAdmin.from('kanban_boards').insert({ id: boardId, tenant_id: data.tenant_id, name: 'Team Tasks', created_by: data.tenant_id })
+  await supabaseAdmin.from('kanban_boards').insert({ id: boardId, tenant_id: data.tenant_id, name: 'Team Tasks', created_by: data.owner_id || data.tenant_id })
   await supabaseAdmin.from('kanban_columns').insert([
     { board_id: boardId, name: 'To Do', color: '#6b7280', position: 0 },
     { board_id: boardId, name: 'In Progress', color: '#3b82f6', position: 1 },

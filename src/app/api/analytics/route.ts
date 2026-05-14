@@ -163,7 +163,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ error: 'Unknown analytics type', code: 'UNKNOWN_TYPE' }, { status: 400 })
   } catch (error) {
-    const { message, status, code } = handleApiError(error)
-    return NextResponse.json({ error: message, code }, { status })
+    return handleApiError(error)
   }
 }

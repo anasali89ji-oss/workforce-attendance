@@ -68,9 +68,22 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Role ID required' }, { status: 400 })
 
-  const { data: role } = await supabaseAdmin.from('custom_roles').select('is_system').eq('id', id).eq('tenant_id', user.tenant_id).single()
+  const { data: role } = await supabaseAdmin.from('custom_roles').select('is_system, slug').eq('id', id).eq('tenant_id', user.tenant_id).single()
   if (!role) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (role.is_system) return NextResponse.json({ error: 'Cannot delete system roles' }, { status: 400 })
+
+  // FIX-024: prevent deletion if users are assigned this role
+  const { count } = await supabaseAdmin
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', user.tenant_id)
+    .eq('role', role.slug)
+  if (count && count > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete: ${count} user(s) have this role. Reassign them first.` },
+      { status: 400 }
+    )
+  }
 
   await supabaseAdmin.from('custom_roles').delete().eq('id', id)
   return NextResponse.json({ success: true })

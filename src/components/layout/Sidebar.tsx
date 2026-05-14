@@ -10,7 +10,6 @@ import {
   Wallet, Timer
 } from 'lucide-react'
 import type { CurrentUser } from '@/types'
-import { usePermissions } from '@/hooks/usePermissions'
 
 interface NavItem {
   href: string
@@ -71,7 +70,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Main', 'Team']))
-  const { isAdmin } = usePermissions()
+  const isAdmin = () => ['owner', 'admin'].includes(user.role)
 
   const toggleGroup = (label: string) => {
     const next = new Set(expandedGroups)

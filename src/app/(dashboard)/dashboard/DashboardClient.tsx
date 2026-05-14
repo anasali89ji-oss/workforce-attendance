@@ -35,8 +35,8 @@ export default function DashboardClient({ user }: DashboardClientProps) {
   const { data: myLog, refetch: refetchMyLog } = useQuery<AttendanceLog>({
     queryKey: ['attendance', 'today'],
     queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 7)
-      const res = await fetch(`/api/attendance?month=${today}&limit=1`)
+      const today = new Date().toISOString().split('T')[0]
+      const res = await fetch(`/api/attendance?date=${today}&limit=1`)
       if (!res.ok) throw new Error('Failed to fetch attendance')
       const json = await res.json()
       return json.data?.[0]

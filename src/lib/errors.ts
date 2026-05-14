@@ -1,3 +1,5 @@
+import { NextResponse } from 'next/server'
+
 export class AppError extends Error {
   constructor(
     message: string,
@@ -45,13 +47,19 @@ export class RateLimitError extends AppError {
   }
 }
 
-export function handleApiError(error: unknown): { message: string; status: number; code: string } {
+export function handleApiError(error: unknown): NextResponse {
   if (error instanceof AppError) {
-    return { message: error.message, status: error.statusCode, code: error.code }
+    return NextResponse.json(
+      { error: error.message, code: error.code, ...(error.details && { details: error.details }) },
+      { status: error.statusCode }
+    )
   }
   if (error instanceof Error) {
     console.error('[API Error]', error)
-    return { message: 'Internal server error', status: 500, code: 'INTERNAL_ERROR' }
+    return NextResponse.json(
+      { error: 'Internal server error', code: 'INTERNAL_ERROR' },
+      { status: 500 }
+    )
   }
-  return { message: 'Unknown error', status: 500, code: 'UNKNOWN_ERROR' }
+  return NextResponse.json({ error: 'Unknown error', code: 'UNKNOWN_ERROR' }, { status: 500 })
 }

@@ -26,8 +26,11 @@ export default function LoginClient() {
   const [pwFocused, setPwFocused] = useState(false)
 
   useEffect(() => {
-    const token = document.cookie.includes('workforce_session_token')
-    if (token) router.push(next)
+    const hasValidToken = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('workforce_session_token='))
+      ?.split('=')[1]
+    if (hasValidToken) router.push(next)
   }, [router, next])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,13 +167,15 @@ export default function LoginClient() {
             </button>
           </form>
 
-          <div className="mt-8 p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-            <div className="text-xs font-semibold text-[var(--text-2)] mb-2">Demo Credentials</div>
-            <div className="space-y-1 text-xs text-[var(--text-3)]">
-              <div className="flex justify-between"><span>Email</span><span className="font-mono text-[var(--text-2)]">admin@workforce.pro</span></div>
-              <div className="flex justify-between"><span>Password</span><span className="font-mono text-[var(--text-2)]">Workforce2024!</span></div>
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-8 p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+              <div className="text-xs font-semibold text-[var(--text-2)] mb-2">Demo Credentials</div>
+              <div className="space-y-1 text-xs text-[var(--text-3)]">
+                <div className="flex justify-between"><span>Email</span><span className="font-mono text-[var(--text-2)]">admin@workforce.pro</span></div>
+                <div className="flex justify-between"><span>Password</span><span className="font-mono text-[var(--text-2)]">Workforce2024!</span></div>
+              </div>
             </div>
-          </div>
+          )}
         </motion.div>
       </div>
     </div>

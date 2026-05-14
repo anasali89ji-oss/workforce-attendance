@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { Search, Bell, Moon, Sun, Command, X, Check } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -16,11 +17,17 @@ export default function TopBar({ user }: TopBarProps) {
   const [cmdOpen, setCmdOpen] = useState(false)
   const [cmdQuery, setCmdQuery] = useState('')
   const [notifOpen, setNotifOpen] = useState(false)
-  const [notifications] = useState([
-    { id: '1', title: 'Leave request approved', message: 'Your annual leave for June 15-18 was approved.', time: '2h ago', read: false, type: 'success' as const },
-    { id: '2', title: 'Late arrival warning', message: 'You were 12 minutes late today.', time: '5h ago', read: false, type: 'warning' as const },
-    { id: '3', title: 'New team member', message: 'Sarah Johnson joined the Engineering team.', time: '1d ago', read: true, type: 'info' as const },
-  ])
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const res = await fetch('/api/notifications')
+      if (!res.ok) return []
+      const json = await res.json()
+      return json.data || []
+    },
+    refetchInterval: 30000,
+  })
+  const notifications = notifData || []
 
   const cmdInputRef = useRef<HTMLInputElement>(null)
 

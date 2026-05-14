@@ -39,7 +39,18 @@ export function middleware(req: NextRequest) {
   // API routes handle their own auth
   if (pathname.startsWith('/api/')) {
     // Add CORS for API routes
-    res.headers.set('Access-Control-Allow-Origin', process.env.NEXT_PUBLIC_APP_URL || '*')
+    const allowedOrigins = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    'http://localhost:3000',
+    'http://localhost:3001',
+  ].filter(Boolean) as string[]
+  const origin = req.headers.get('origin')
+  if (origin && allowedOrigins.includes(origin)) {
+    res.headers.set('Access-Control-Allow-Origin', origin)
+  } else if (!origin) {
+    // Same-origin requests (no Origin header)
+    res.headers.set('Access-Control-Allow-Origin', process.env.NEXT_PUBLIC_APP_URL || '')
+  }
     res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token')
     return res

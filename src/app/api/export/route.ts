@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: 'Unsupported format', code: 'UNSUPPORTED_FORMAT' }, { status: 400 })
   } catch (error) {
-    const { message, status, code } = handleApiError(error)
-    return NextResponse.json({ error: message, code }, { status })
+    return handleApiError(error)
   }
 }
