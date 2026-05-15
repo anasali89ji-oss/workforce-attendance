@@ -1,5 +1,7 @@
 'use client'
 
+import { toast } from 'sonner'
+
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Clock, Calendar, CheckCircle2, XCircle, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -44,22 +46,30 @@ export default function AttendancePage() {
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set())
-    else setSelectedIds(new Set(filtered.map(l => l.id)))
+    else setSelectedIds(new Set(filtered.map(l => l.id as string)))
   }
 
   const handleExport = async (format: 'csv' | 'excel' | 'pdf' | 'json') => {
-    const res = await fetch('/api/export', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table: 'attendance_logs', format, filters: { dateFrom: `${month}-01` } }),
-    })
-    if (format === 'csv') {
+    try {
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'attendance_logs', format, filters: { dateFrom: `${month}-01` } }),
+      })
+      if (!res.ok) {
+        toast.error('Export failed')
+        return
+      }
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `attendance_${month}.csv`
+      a.download = `attendance_${month}.${format}`
       a.click()
+      window.URL.revokeObjectURL(url)
+      toast.success(`Exported as ${format.toUpperCase()}`)
+    } catch {
+      toast.error('Export failed — network error')
     }
   }
 
@@ -75,7 +85,13 @@ export default function AttendancePage() {
 
   const getDayLogs = (day: number) => {
     const dateStr = `${month}-${day.toString().padStart(2, '0')}`
-    return filtered.filter(l => l.attendance_date === dateStr)
+    return filtered.filter(l => {
+      // Handle both 'YYYY-MM-DD' and ISO string 'YYYY-MM-DDTHH:mm:ss'
+      const logDate = typeof l.attendance_date === 'string'
+        ? l.attendance_date.split('T')[0]
+        : new Date(l.attendance_date).toISOString().split('T')[0]
+      return logDate === dateStr
+    })
   }
 
   const statusBadge = (status: string, isLate?: boolean) => {

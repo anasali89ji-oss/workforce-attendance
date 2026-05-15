@@ -7,6 +7,7 @@ import {
   TrendingUp, Activity, ArrowUpRight, ArrowDownRight,
   Coffee, Briefcase
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { formatDuration, formatTime, formatDate } from '@/lib/utils'
 import { ProgressRing } from '@/components/ui/ProgressRing'
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge'
@@ -74,25 +75,43 @@ export default function DashboardClient({ user }: DashboardClientProps) {
   const fmtTime = (d?: string) => d ? formatTime(d) : '--:--'
   const fmtDur = (m?: number) => formatDuration(m || 0)
   const fmtElapsed = (s: number) => {
-    const h = Math.floor(s / 3600)
-    const m = Math.floor((s % 3600) / 60)
-    const sec = s % 60
+    const safe = Math.max(0, Math.floor(s))
+    const h = Math.floor(safe / 3600)
+    const m = Math.floor((safe % 3600) / 60)
+    const sec = safe % 60
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
   }
 
-  const handleClockAction = async (action: 'clock_in' | 'clock_out') => {
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+  const handleClockAction = async (action: 'clock_in' | 'clock_out' | 'start_break' | 'end_break') => {
+    setActionLoading(action)
     try {
       const res = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
+      const json = await res.json()
       if (res.ok) {
-        refetchMyLog()
-        refetchSummary()
+        await refetchMyLog()
+        await refetchSummary()
+        const msgs: Record<string, string> = {
+          clock_in: json.isLate ? '⚠ Clocked in — marked late' : '✓ Clocked in successfully',
+          clock_out: '✓ Clocked out successfully',
+          start_break: '☕ Break started',
+          end_break: '✓ Break ended',
+        }
+        toast.success(msgs[action])
+      } else {
+        console.error('Clock action error:', json.error)
+        toast.error(json.error || 'Action failed')
       }
     } catch (err) {
       console.error('Clock action failed:', err)
+      toast.error('Network error — please try again')
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -152,15 +171,40 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             />
           </div>
 
-          <div className="flex items-center gap-4 mb-6">
-            <button onClick={() => handleClockAction('clock_in')} disabled={clockedIn} className={`btn flex-1 ${clockedIn ? 'btn-ghost opacity-50' : 'btn-primary'}`}>
-              <Clock size={16} />
-              {clockedIn ? 'Clocked In' : 'Clock In'}
-            </button>
-            <button onClick={() => handleClockAction('clock_out')} disabled={!clockedIn || clockedOut} className={`btn flex-1 ${!clockedIn || clockedOut ? 'btn-ghost opacity-50' : 'btn-secondary'}`}>
-              <Clock size={16} />
-              {clockedOut ? 'Clocked Out' : 'Clock Out'}
-            </button>
+          <div className="space-y-3 mb-6">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleClockAction('clock_in')}
+                disabled={clockedIn || !!actionLoading}
+                className={`btn flex-1 ${clockedIn ? 'btn-ghost opacity-50 cursor-not-allowed' : 'btn-primary'}`}
+              >
+                {actionLoading === 'clock_in' ? <span className="spinner spinner-sm" /> : <Clock size={16} />}
+                {clockedIn ? 'Clocked In ✓' : 'Clock In'}
+              </button>
+              <button
+                onClick={() => handleClockAction('clock_out')}
+                disabled={!clockedIn || clockedOut || !!actionLoading}
+                className={`btn flex-1 ${!clockedIn || clockedOut ? 'btn-ghost opacity-50 cursor-not-allowed' : 'btn-secondary'}`}
+              >
+                {actionLoading === 'clock_out' ? <span className="spinner spinner-sm" /> : <Clock size={16} />}
+                {clockedOut ? 'Clocked Out ✓' : 'Clock Out'}
+              </button>
+            </div>
+            {clockedIn && !clockedOut && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => handleClockAction(myLog?.status === 'on_break' ? 'end_break' : 'start_break')}
+                  disabled={!!actionLoading}
+                  className="btn btn-ghost flex-1 text-xs"
+                  style={{ fontSize: 12 }}
+                >
+                  {actionLoading === 'start_break' || actionLoading === 'end_break'
+                    ? <span className="spinner spinner-sm" />
+                    : myLog?.status === 'on_break' ? '☕ End Break' : '☕ Start Break'
+                  }
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-3">
@@ -216,7 +260,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             </h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-[var(--text-3)]">Hours</span><span className="font-medium text-[var(--text)]">{user.tenant.working_hours_start} - {user.tenant.working_hours_end}</span></div>
-              <div className="flex justify-between"><span className="text-[var(--text-3)]">Days</span><span className="font-medium text-[var(--text)]">{user.tenant.working_days.join(', ')}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--text-3)]">Days</span><span className="font-medium text-[var(--text)]">{Array.isArray(user.tenant.working_days) ? user.tenant.working_days.join(', ') : user.tenant.working_days}</span></div>
               <div className="flex justify-between"><span className="text-[var(--text-3)]">Late Threshold</span><span className="font-medium text-[var(--text)]">{user.tenant.late_threshold} min</span></div>
             </div>
           </div>

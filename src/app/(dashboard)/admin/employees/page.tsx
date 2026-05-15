@@ -20,7 +20,7 @@ function getInitials(name: string) { return name.split(' ').map(w=>w[0]).slice(0
 const AVATAR_COLORS = ['#4f46e5','#0891b2','#059669','#d97706','#7c3aed','#dc2626']
 function getColor(name: string) { return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length] }
 
-const EMPTY_FORM = { full_name:'', email:'', password:'Welcome@123456', phone:'', role:'worker', department:'', position:'', employee_id:'' }
+const EMPTY_FORM = { full_name:'', email:'', password:'', phone:'', role:'worker', department:'', position:'', employee_id:'' }
 
 export default function AdminEmployeesPage() {
   const [employees, setEmployees]     = useState<Employee[]>([])

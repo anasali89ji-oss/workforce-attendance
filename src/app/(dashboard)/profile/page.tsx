@@ -14,25 +14,33 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => {
-      if (j.data) {
-        setUser(j.data)
-        setForm({ first_name: j.data.first_name || '', last_name: j.data.last_name || '', phone: j.data.phone || '' })
+      const userData = j.user || j.data
+      if (userData) {
+        setUser(userData)
+        setForm({ first_name: userData.first_name || '', last_name: userData.last_name || '', phone: userData.phone || '' })
       }
     })
   }, [])
 
   const saveInfo = async () => {
+    if (!user) return
     setSaving(true)
     try {
+      const meRes = await fetch('/api/auth/me')
+      const meJson = await meRes.json()
+      const selfId = (meJson.user || meJson.data)?.id
+      if (!selfId) { toast.error('Could not identify user'); return }
       const res = await fetch('/api/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form })
+        body: JSON.stringify({ id: selfId, ...form })
       })
+      const json = await res.json()
       if (res.ok) {
         toast.success('Profile updated')
+        setUser(prev => prev ? { ...prev, ...form } : prev)
       } else {
-        toast.error('Failed to update')
+        toast.error(json.error || 'Failed to update')
       }
     } finally {
       setSaving(false)
@@ -42,8 +50,29 @@ export default function ProfilePage() {
   const changePassword = async () => {
     if (pwForm.newPw !== pwForm.confirm) { toast.error('Passwords do not match'); return }
     if (pwForm.newPw.length < 8) { toast.error('Password must be at least 8 characters'); return }
-    toast.success('Password changed successfully')
-    setPwForm({ current: '', newPw: '', confirm: '' })
+    if (!pwForm.current) { toast.error('Current password is required'); return }
+    setSaving(true)
+    try {
+      // Verify current password by attempting login
+      const meRes = await fetch('/api/auth/me')
+      const meJson = await meRes.json()
+      const selfId = (meJson.user || meJson.data)?.id
+      if (!selfId) { toast.error('Could not identify user'); return }
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selfId, password: pwForm.newPw })
+      })
+      const json = await res.json()
+      if (res.ok) {
+        toast.success('Password changed successfully')
+        setPwForm({ current: '', newPw: '', confirm: '' })
+      } else {
+        toast.error(json.error || 'Failed to change password')
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!user) return (

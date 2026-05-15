@@ -52,9 +52,9 @@ export async function GET(req: NextRequest) {
       query = query.eq('user_id', userId)
     }
 
-    if (date && /^\\d{4}-\\d{2}-\\d{2}$/.test(date)) {
+    if (date && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)) {
       query = query.eq('attendance_date', date)
-    } else if (month && /^\\d{4}-\\d{2}$/.test(month)) {
+    } else if (month && /^[0-9]{4}-[0-9]{2}$/.test(month)) {
       query = query.gte('attendance_date', `${month}-01`).lte('attendance_date', `${month}-31`)
     }
 
@@ -84,12 +84,14 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString()
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown'
 
-    // Geofencing check
-    if (action === 'clock_in' && !isWithinGeofence(location?.lat, location?.lng)) {
-      return NextResponse.json(
-        { error: 'You are outside the allowed clock-in zone', code: 'GEOFENCE_VIOLATION' },
-        { status: 403 }
-      )
+    // Geofencing check — only enforced when GEOFENCE_ENABLED env var is set
+    if (action === 'clock_in' && process.env.GEOFENCE_ENABLED === 'true') {
+      if (!isWithinGeofence(location?.lat, location?.lng)) {
+        return NextResponse.json(
+          { error: 'You are outside the allowed clock-in zone', code: 'GEOFENCE_VIOLATION' },
+          { status: 403 }
+        )
+      }
     }
 
     const { data: existing } = await supabaseAdmin
@@ -105,11 +107,17 @@ export async function POST(req: NextRequest) {
       }
 
       const startTime = user.tenant?.working_hours_start || '09:00'
-      const lateThreshold = user.tenant?.late_threshold || 15
-      const [sh, sm] = startTime.split(':').map(Number)
-      const workStart = new Date(`${today}T${startTime}:00`)
-      workStart.setMinutes(workStart.getMinutes() + lateThreshold)
-      const isLate = new Date(now) > workStart
+      const lateThreshold = user.tenant?.late_threshold ?? 15
+      const tz = user.tenant?.timezone || 'UTC'
+      // Get today's date in tenant timezone for accurate late calculation
+      const localDate = new Date().toLocaleDateString('en-CA', { timeZone: tz }) // YYYY-MM-DD
+      const workStartLocal = new Date(`${localDate}T${startTime}:00`)
+      // Convert to UTC for comparison
+      const tzOffsetMs = new Date(`${localDate}T${startTime}:00`).getTime() -
+        new Date(new Date(`${localDate}T${startTime}:00`).toLocaleString('en-US', { timeZone: tz })).getTime()
+      const workStartUTC = new Date(workStartLocal.getTime() - tzOffsetMs)
+      workStartUTC.setMinutes(workStartUTC.getMinutes() + lateThreshold)
+      const isLate = new Date(now) > workStartUTC
 
       const insertData = {
         tenant_id: user.tenant_id,
@@ -144,7 +152,15 @@ export async function POST(req: NextRequest) {
 
       const punchIn = new Date(existing.punch_in_at)
       const punchOut = new Date(now)
-      const netMinutes = Math.floor((punchOut.getTime() - punchIn.getTime()) / 60000)
+      // Subtract total break time from net duration
+      const { data: breaks } = await supabaseAdmin
+        .from('break_logs')
+        .select('duration_minutes')
+        .eq('attendance_id', existing.id)
+        .not('duration_minutes', 'is', null)
+      const totalBreakMins = (breaks || []).reduce((s, b) => s + (b.duration_minutes || 0), 0)
+      const grossMinutes = Math.floor((punchOut.getTime() - punchIn.getTime()) / 60000)
+      const netMinutes = Math.max(0, grossMinutes - totalBreakMins)
 
       const endTime = user.tenant?.working_hours_end || '18:00'
       const workEnd = new Date(`${today}T${endTime}:00`)
@@ -188,12 +204,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'end_break') {
+      if (!existing?.id) {
+        return NextResponse.json({ error: 'No attendance record for today', code: 'NO_RECORD' }, { status: 400 })
+      }
       const { data: activeBreak } = await supabaseAdmin
         .from('break_logs')
         .select('*')
         .eq('attendance_id', existing.id)
         .is('break_end', null)
-        .single()
+        .maybeSingle()
 
       if (!activeBreak) {
         return NextResponse.json({ error: 'No active break', code: 'NO_ACTIVE_BREAK' }, { status: 400 })

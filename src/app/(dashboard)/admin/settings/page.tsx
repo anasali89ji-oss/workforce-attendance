@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Settings, Building2, Clock, Bell, Shield, Save, Globe, Calendar } from 'lucide-react'
 
-interface Tenant { name:string; timezone:string; work_start_time:string; work_end_time:string; late_threshold:number; work_days:string; subdomain:string }
+interface Tenant { id:string; name:string; timezone:string; working_hours_start:string; working_hours_end:string; late_threshold:number; working_days:string[]; slug:string }
 
 const TIMEZONES = ['Asia/Karachi','UTC','America/New_York','America/Los_Angeles','America/Chicago','Europe/London','Europe/Paris','Europe/Berlin','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Asia/Tokyo','Australia/Sydney']
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
@@ -18,27 +18,33 @@ export default function SettingsPage() {
   const [saving, setSaving]   = useState(false)
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r=>r.json()).then(j => { if (j.data?.tenant) setTenant(j.data.tenant) })
+    fetch('/api/settings').then(r=>r.json()).then(j => { if (j.data) setTenant(j.data) })
   }, [])
 
   const save = async () => {
     if (!tenant) return
     setSaving(true)
     try {
-      const res = await fetch('/api/tenants', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(tenant) })
+      const res = await fetch('/api/settings', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(tenant) })
       if (res.ok) toast.success('Settings saved')
       else toast.error('Failed to save')
     } finally { setSaving(false) }
   }
 
+  const DAY_CODES = ['SUN','MON','TUE','WED','THU','FRI','SAT']
   const toggleDay = (dayNum: number) => {
     if (!tenant) return
-    const days = (tenant.work_days || '').split(',').filter(Boolean).map(Number)
-    const updated = days.includes(dayNum) ? days.filter(d=>d!==dayNum) : [...days, dayNum]
-    setTenant(t => t ? { ...t, work_days: updated.sort().join(',') } : t)
+    const code = DAY_CODES[dayNum]
+    const days = Array.isArray(tenant.working_days) ? tenant.working_days : []
+    const updated = days.includes(code) ? days.filter(d => d !== code) : [...days, code]
+    setTenant(t => t ? { ...t, working_days: updated } : t)
   }
 
-  const isDayActive = (dayNum: number) => (tenant?.work_days||'').split(',').map(Number).includes(dayNum)
+  const isDayActive = (dayNum: number) => {
+    const code = DAY_CODES[dayNum]
+    const days = Array.isArray(tenant?.working_days) ? tenant.working_days : []
+    return days.includes(code)
+  }
 
   if (!tenant) return (
     <div className="page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
@@ -91,8 +97,8 @@ export default function SettingsPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Subdomain</label>
-                <input className="input" value={tenant.subdomain} disabled style={{ opacity: 0.7, cursor: 'not-allowed' }} />
-                <span className="form-hint">Contact support to change subdomain</span>
+                <input className="input" value={tenant.slug} disabled style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                <span className="form-hint">Contact support to change slug</span>
               </div>
               <div className="form-group">
                 <label className="form-label">Timezone</label>
@@ -116,11 +122,11 @@ export default function SettingsPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div className="form-group">
                 <label className="form-label">Work Starts At</label>
-                <input type="time" className="input" value={tenant.work_start_time} onChange={e=>setTenant(t=>t?{...t,work_start_time:e.target.value}:t)} />
+                <input type="time" className="input" value={tenant.working_hours_start} onChange={e=>setTenant(t=>t?{...t,working_hours_start:e.target.value}:t)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Work Ends At</label>
-                <input type="time" className="input" value={tenant.work_end_time} onChange={e=>setTenant(t=>t?{...t,work_end_time:e.target.value}:t)} />
+                <input type="time" className="input" value={tenant.working_hours_end} onChange={e=>setTenant(t=>t?{...t,working_hours_end:e.target.value}:t)} />
               </div>
               <div className="form-group" style={{ gridColumn: '1/-1' }}>
                 <label className="form-label">Late Threshold (minutes after start time)</label>
@@ -132,7 +138,7 @@ export default function SettingsPage() {
                     {tenant.late_threshold}m
                   </span>
                 </div>
-                <span className="form-hint">Employees clocking in after {tenant.work_start_time} + {tenant.late_threshold} min will be marked late</span>
+                <span className="form-hint">Employees clocking in after {tenant.working_hours_start} + {tenant.late_threshold} min will be marked late</span>
               </div>
             </div>
           </div>
@@ -160,7 +166,7 @@ export default function SettingsPage() {
               })}
             </div>
             <p className="form-hint" style={{ marginTop: 10 }}>
-              {(tenant.work_days||'').split(',').filter(Boolean).length} days selected
+              {(Array.isArray(tenant.working_days) ? tenant.working_days : []).length} days selected
             </p>
           </div>
         </div>

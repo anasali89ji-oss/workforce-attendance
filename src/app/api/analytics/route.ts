@@ -8,7 +8,13 @@ export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser()
     if (!user) throw new AuthError()
-    if (!hasPermission(user, 'analytics:read')) throw new ForbiddenError()
+    // Workers get summary only (own data). Managers+ get full analytics.
+    const { searchParams: sp2 } = new URL(req.url)
+    const reqType = sp2.get('type') || 'summary'
+    const isPrivilegedUser = ['owner', 'admin', 'manager'].includes(user.role)
+    if (!isPrivilegedUser && !['summary', 'attendance_trend'].includes(reqType)) {
+      throw new ForbiddenError()
+    }
 
     const { searchParams } = new URL(req.url)
     const type = searchParams.get('type') || 'summary'

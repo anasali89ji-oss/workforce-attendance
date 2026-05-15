@@ -15,9 +15,41 @@ export default function ReportsPage() {
   const [from,setFrom] = useState('')
   const [to,setTo]     = useState('')
 
-  const generate = () => {
+  const [generating, setGenerating] = useState(false)
+
+  const generate = async () => {
     if (!from || !to) { toast.error('Select a date range'); return }
-    toast.success(`Generating ${type} report...`)
+    if (new Date(from) > new Date(to)) { toast.error('Start date must be before end date'); return }
+    setGenerating(true)
+    try {
+      const res = await fetch(`/api/reports?type=${type}&start=${from}&end=${to}`)
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error || 'Failed to generate report'); return }
+
+      // Export as CSV
+      const rows = json.data || []
+      if (rows.length === 0) { toast.info('No data for selected period'); return }
+
+      const headers = Object.keys(rows[0]).filter(k => !['tenant_id'].includes(k))
+      const csvRows = [
+        headers.join(','),
+        ...rows.map((r: Record<string,unknown>) =>
+          headers.map(h => {
+            const val = h.includes('.') ? h.split('.').reduce((o, k) => (o as Record<string,unknown>)?.[k], r) : r[h]
+            return typeof val === 'string' && val.includes(',') ? `"${val}"` : String(val ?? '')
+          }).join(',')
+        )
+      ]
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${type}_report_${from}_${to}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success(`${rows.length} records exported`)
+    } catch { toast.error('Export failed') }
+    finally { setGenerating(false) }
   }
 
   return (

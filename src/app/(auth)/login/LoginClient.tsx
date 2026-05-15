@@ -1,5 +1,7 @@
 'use client'
 
+import { toast } from 'sonner'
+
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -48,7 +50,9 @@ export default function LoginClient() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || 'Login failed')
+        const msg = data.error || 'Login failed'
+        setError(msg)
+        toast.error(msg)
         setLoading(false)
         return
       }
@@ -57,6 +61,7 @@ export default function LoginClient() {
       router.refresh()
     } catch {
       setError('Network error. Please try again.')
+      toast.error('Network error — check your connection')
       setLoading(false)
     }
   }

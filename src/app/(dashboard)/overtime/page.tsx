@@ -22,12 +22,12 @@ export default function OvertimePage() {
   const [rejectId, setRejectId] = useState<string|null>(null)
 
   const load = useCallback(async () => {
-    // Mock data since we don't have an overtime table yet
-    setRequests([
-      {id:'1',user_id:'u1',date:'2026-04-01',hours:2,reason:'Urgent deployment',status:'pending',created_at:new Date().toISOString(),user:{full_name:'Anas Ali'}},
-      {id:'2',user_id:'u2',date:'2026-03-30',hours:3,reason:'Client presentation prep',status:'approved',created_at:new Date().toISOString(),user:{full_name:'Ahmed Khan'}},
-    ])
-    setLoading(false)
+    try {
+      const res = await fetch('/api/overtime')
+      const json = await res.json()
+      if (json.data) setRequests(json.data)
+    } catch { toast.error('Failed to load overtime requests') }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])

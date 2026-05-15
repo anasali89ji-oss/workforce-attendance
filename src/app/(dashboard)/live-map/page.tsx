@@ -21,7 +21,8 @@ export default function LiveMapPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/attendance?limit=100&date=today')
+      const today = new Date().toISOString().split('T')[0]
+      const res = await fetch(`/api/attendance?limit=100&date=${today}`)
       const json = await res.json()
       if (json.data) setUsers(json.data)
     } catch {} finally { setLoading(false); setLastUpdate(new Date()) }

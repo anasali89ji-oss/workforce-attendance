@@ -10,11 +10,12 @@ const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'workforce-fallback-secret-change-in-production-min-32-chars'
 )
 
-if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.error('CRITICAL: JWT_SECRET env var not set in production!')
-}
+// JWT_SECRET runtime check is done inside createSessionToken/getCurrentUser
 
 export async function createSessionToken(userId: string): Promise<string> {
+  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set in production')
+  }
   return new SignJWT({ sub: userId })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
