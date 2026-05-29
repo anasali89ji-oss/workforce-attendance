@@ -1,19 +1,19 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth.server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabaseAdmin
-    .from('notifications')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(50)
+  const data = await prisma.notification.findMany({
+    where: { user_id: user.id },
+    orderBy: { created_at: 'desc' },
+    take: 50,
+  })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ data })
 }
 
@@ -24,19 +24,15 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
 
   if (body.mark_all_read) {
-    await supabaseAdmin
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', user.id)
+    await prisma.notification.updateMany({ where: { user_id: user.id }, data: { is_read: true } })
     return NextResponse.json({ success: true })
   }
 
   if (body.id) {
-    await supabaseAdmin
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', body.id)
-      .eq('user_id', user.id)
+    await prisma.notification.updateMany({
+      where: { id: body.id, user_id: user.id },
+      data: { is_read: true },
+    })
     return NextResponse.json({ success: true })
   }
 
