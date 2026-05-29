@@ -1,27 +1,29 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth.server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: roles, error } = await supabaseAdmin
-    .from('custom_roles').select('*').eq('tenant_id', user.tenant_id).order('is_system', { ascending: false })
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  const { data: profileCounts } = await supabaseAdmin
-    .from('profiles').select('role').eq('tenant_id', user.tenant_id).eq('is_active', true)
+  const [roles, profileCounts] = await Promise.all([
+    prisma.customRole.findMany({
+      where: { tenant_id: user.tenant_id },
+      orderBy: [{ is_system: 'desc' }, { name: 'asc' }],
+    }),
+    prisma.profile.groupBy({
+      by: ['role'],
+      where: { tenant_id: user.tenant_id, is_active: true },
+      _count: { role: true },
+    }),
+  ])
 
   const countMap: Record<string, number> = {}
-  ;(profileCounts || []).forEach(p => { countMap[p.role] = (countMap[p.role] || 0) + 1 })
+  for (const r of profileCounts) countMap[r.role] = r._count.role
 
-  const rolesWithCounts = (roles || []).map(r => ({
-    ...r,
-    user_count: countMap[r.slug] || 0,
-  }))
-
+  const rolesWithCounts = roles.map(r => ({ ...r, user_count: countMap[r.slug] ?? 0 }))
   return NextResponse.json({ data: rolesWithCounts })
 }
 
@@ -33,12 +35,18 @@ export async function POST(req: NextRequest) {
   const { name, description, color, permissions } = await req.json()
   const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '_')
 
-  const { data, error } = await supabaseAdmin.from('custom_roles').insert({
-    tenant_id: user.tenant_id, name, slug, description, color: color || '#6366f1', permissions: permissions || [], is_system: false,
-  }).select().single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data })
+  const data = await prisma.customRole.create({
+    data: {
+      tenant_id: user.tenant_id,
+      name,
+      slug,
+      description,
+      color: color || '#6366f1',
+      permissions: permissions || [],
+      is_system: false,
+    },
+  })
+  return NextResponse.json({ data }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -47,15 +55,16 @@ export async function PATCH(req: NextRequest) {
   if (!['owner', 'admin'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id, name, description, color, permissions } = await req.json()
-  const updates: Record<string,unknown> = { updated_at: new Date().toISOString() }
-  if (name !== undefined) updates.name = name
-  if (description !== undefined) updates.description = description
-  if (color !== undefined) updates.color = color
-  if (permissions !== undefined) updates.permissions = permissions
 
-  const { data, error } = await supabaseAdmin.from('custom_roles')
-    .update(updates).eq('id', id).eq('tenant_id', user.tenant_id).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const data = await prisma.customRole.update({
+    where: { id, tenant_id: user.tenant_id },
+    data: {
+      ...(name !== undefined && { name }),
+      ...(description !== undefined && { description }),
+      ...(color !== undefined && { color }),
+      ...(permissions !== undefined && { permissions }),
+    },
+  })
   return NextResponse.json({ data })
 }
 
@@ -68,10 +77,10 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Role ID required' }, { status: 400 })
 
-  const { data: role } = await supabaseAdmin.from('custom_roles').select('is_system').eq('id', id).eq('tenant_id', user.tenant_id).single()
+  const role = await prisma.customRole.findFirst({ where: { id, tenant_id: user.tenant_id } })
   if (!role) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (role.is_system) return NextResponse.json({ error: 'Cannot delete system roles' }, { status: 400 })
 
-  await supabaseAdmin.from('custom_roles').delete().eq('id', id)
+  await prisma.customRole.delete({ where: { id } })
   return NextResponse.json({ success: true })
 }
