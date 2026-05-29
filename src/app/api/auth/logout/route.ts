@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { CURRENT_USER_COOKIE, CSRF_COOKIE, getCurrentUser } from '@/lib/auth.server'
 import { logAudit } from '@/lib/audit'

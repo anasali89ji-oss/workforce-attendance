@@ -1,4 +1,4 @@
-import { supabaseAdmin } from './supabase'
+import { prisma } from './prisma'
 import type { CurrentUser } from '@/types'
 
 export async function logAudit(
@@ -14,15 +14,17 @@ export async function logAudit(
   }
 ) {
   try {
-    await supabaseAdmin.from('audit_logs').insert({
-      tenant_id: tenantId,
-      user_id: options?.user?.id || null,
-      action,
-      entity_type: entityType,
-      entity_id: entityId,
-      old_values: options?.oldValues || null,
-      new_values: options?.newValues || null,
-      ip_address: options?.ipAddress || null,
+    await prisma.auditLog.create({
+      data: {
+        tenant_id: tenantId,
+        user_id: options?.user?.id ?? null,
+        action,
+        entity_type: entityType,
+        entity_id: entityId ?? null,
+        old_values: options?.oldValues ?? null,
+        new_values: options?.newValues ?? null,
+        ip_address: options?.ipAddress ?? null,
+      },
     })
   } catch (err) {
     console.error('[Audit] Failed to log:', err)
