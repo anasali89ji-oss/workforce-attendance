@@ -84,3 +84,45 @@ export type OvertimeInput = z.infer<typeof overtimeSchema>
 export type TenantSettingsInput = z.infer<typeof tenantSettingsSchema>
 export type PayrollInput = z.infer<typeof payrollSchema>
 export type BulkActionInput = z.infer<typeof bulkActionSchema>
+
+// ─── Setup Wizard Schemas ───────────────────────────────────────────────────
+
+export const setupStep1Schema = z.object({
+  name: z.string().min(2, 'Company name must be at least 2 characters').max(100),
+  timezone: z.string().default('UTC'),
+  logo_url: z.string().url().optional().or(z.literal('')),
+})
+
+export const setupStep2Schema = z.object({
+  first_name: z.string().min(1, 'First name is required').max(50),
+  last_name: z.string().min(1, 'Last name is required').max(50),
+  email: z.string().email('Invalid email address'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Must contain at least one number')
+    .regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
+})
+
+export const setupStep3Schema = z.object({
+  working_hours_start: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:MM format'),
+  working_hours_end: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:MM format'),
+  working_days: z.array(z.enum(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'])).min(1),
+  late_threshold: z.number().int().min(0).max(120).default(15),
+})
+
+export const setupStep4Schema = z.object({
+  shifts: z.array(z.object({
+    name: z.string().min(1).max(100),
+    start_time: z.string().regex(/^\d{2}:\d{2}$/),
+    end_time: z.string().regex(/^\d{2}:\d{2}$/),
+    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default('#3b82f6'),
+    is_night: z.boolean().default(false),
+  })).min(1),
+})
+
+export type SetupStep1Input = z.infer<typeof setupStep1Schema>
+export type SetupStep2Input = z.infer<typeof setupStep2Schema>
+export type SetupStep3Input = z.infer<typeof setupStep3Schema>
+export type SetupStep4Input = z.infer<typeof setupStep4Schema>
