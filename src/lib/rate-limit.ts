@@ -23,3 +23,10 @@ export const bulkRateLimit = new Ratelimit({
   analytics: true,
   prefix: 'ratelimit:bulk',
 })
+
+export const accountLockoutLimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(5, '15 m'), // 5 failed attempts per 15 min
+  analytics: true,
+  prefix: 'ratelimit:account',
+})

@@ -1,46 +1,61 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth.server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['owner', 'admin', 'hr'].includes(user.role || '')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  if (!['owner', 'admin'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { email, role_id } = await req.json()
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: 'Valid email required' }, { status: 422 })
+  }
+
   const expires = new Date()
   expires.setDate(expires.getDate() + 7)
 
-  const { data, error } = await supabaseAdmin
-    .from('team_invitations')
-    .insert({
+  const data = await prisma.teamInvitation.create({
+    data: {
       tenant_id: user.tenant_id,
       email: email.toLowerCase().trim(),
       role_id,
       invited_by: user.id,
-      expires_at: expires.toISOString(),
+      expires_at: expires,
       status: 'pending',
-    })
-    .select()
-    .single()
+    },
+  })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data })
+  return NextResponse.json({ data }, { status: 201 })
 }
 
 export async function GET() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!['owner', 'admin'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data, error } = await supabaseAdmin
-    .from('team_invitations')
-    .select('*, inviter:users!invited_by(first_name, last_name)')
-    .eq('tenant_id', user.tenant_id)
-    .order('created_at', { ascending: false })
-    .limit(50)
+  const data = await prisma.teamInvitation.findMany({
+    where: { tenant_id: user.tenant_id },
+    include: {
+      inviter: { select: { first_name: true, last_name: true, email: true } },
+    },
+    orderBy: { created_at: 'desc' },
+  })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ data })
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await getCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!['owner', 'admin'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
+
+  await prisma.teamInvitation.delete({ where: { id, tenant_id: user.tenant_id } })
+  return NextResponse.json({ success: true })
 }

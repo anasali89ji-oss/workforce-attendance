@@ -1,6 +1,7 @@
-// Server-only auth utilities (next/headers, supabaseAdmin)
+// Server-only auth utilities (next/headers, supabaseAdmin, prisma)
 import { cookies } from 'next/headers'
 import { supabaseAdmin } from './supabase'
+import { prisma } from './prisma'
 import type { CurrentUser } from '@/types'
 import { CURRENT_USER_COOKIE, CSRF_COOKIE } from './auth'
 
@@ -12,27 +13,53 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     const sessionToken = cookieStore.get(CURRENT_USER_COOKIE)?.value
     if (!sessionToken) return null
 
-    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(sessionToken)
+    // Verify Supabase session
+    const {
+      data: { user: authUser },
+      error: authError,
+    } = await supabaseAdmin.auth.getUser(sessionToken)
     if (authError || !authUser) return null
 
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select(`
-        id, email, full_name, first_name, last_name, avatar_url,
-        role, phone, employee_id, department, position,
-        is_active, joining_date, created_at, updated_at, tenant_id,
-        tenant:tenants(
-          id, name, slug, logo_url, timezone,
-          working_hours_start, working_hours_end, working_days,
-          late_threshold, created_at
-        )
-      `)
-      .eq('id', authUser.id)
-      .eq('is_active', true)
-      .single()
+    // Fetch profile from Prisma (single source of truth)
+    const profile = await prisma.profile.findFirst({
+      where: { id: authUser.id, is_active: true },
+      include: { tenant: true },
+    })
 
-    if (profileError || !profile) return null
-    return profile as unknown as CurrentUser
+    if (!profile) return null
+
+    // Shape into CurrentUser contract
+    return {
+      id: profile.id,
+      tenant_id: profile.tenant_id,
+      email: profile.email,
+      full_name: profile.full_name ?? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(),
+      first_name: profile.first_name ?? undefined,
+      last_name: profile.last_name ?? undefined,
+      avatar_url: profile.avatar_url ?? undefined,
+      role: profile.role as CurrentUser['role'],
+      phone: profile.phone ?? undefined,
+      employee_id: profile.employee_id ?? undefined,
+      department: profile.department ?? undefined,
+      position: profile.position ?? undefined,
+      is_active: profile.is_active,
+      joining_date: profile.joining_date?.toISOString().split('T')[0],
+      created_at: profile.created_at.toISOString(),
+      updated_at: profile.updated_at.toISOString(),
+      tenant: {
+        id: profile.tenant.id,
+        name: profile.tenant.name,
+        slug: profile.tenant.slug,
+        logo_url: profile.tenant.logo_url ?? undefined,
+        timezone: profile.tenant.timezone,
+        working_hours_start: profile.tenant.working_hours_start,
+        working_hours_end: profile.tenant.working_hours_end,
+        working_days: profile.tenant.working_days,
+        late_threshold: profile.tenant.late_threshold,
+        created_at: profile.tenant.created_at.toISOString(),
+        updated_at: profile.tenant.updated_at.toISOString(),
+      },
+    }
   } catch (err) {
     console.error('[getCurrentUser] error:', err)
     return null

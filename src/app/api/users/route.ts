@@ -1,7 +1,34 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth.server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { prisma } from '@/lib/prisma'
+import { logAudit } from '@/lib/audit'
 import bcrypt from 'bcryptjs'
+
+function safeProfile(p: {
+  id: string; email: string; full_name: string | null; first_name: string | null
+  last_name: string | null; role: string; phone: string | null; employee_id: string | null
+  department: string | null; position: string | null; is_active: boolean
+  joining_date: Date | null; created_at: Date; avatar_url: string | null
+}) {
+  return {
+    id: p.id,
+    email: p.email,
+    full_name: p.full_name ?? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim(),
+    first_name: p.first_name,
+    last_name: p.last_name,
+    role: p.role,
+    phone: p.phone,
+    employee_id: p.employee_id,
+    department: p.department,
+    position: p.position,
+    is_active: p.is_active,
+    joining_date: p.joining_date?.toISOString().split('T')[0] ?? null,
+    created_at: p.created_at.toISOString(),
+    avatar_url: p.avatar_url,
+  }
+}
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser()
@@ -10,19 +37,38 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search')
   const dept = searchParams.get('department')
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200)
+  const skip = (page - 1) * limit
 
-  let query = supabaseAdmin
-    .from('profiles')
-    .select('id,email,full_name,first_name,last_name,role,phone,employee_id,department,position,is_active,joining_date,created_at,avatar_url')
-    .eq('tenant_id', user.tenant_id)
-    .order('created_at', { ascending: false })
+  const where = {
+    tenant_id: user.tenant_id,
+    ...(dept ? { department: dept } : {}),
+    ...(search ? {
+      OR: [
+        { full_name: { contains: search, mode: 'insensitive' as const } },
+        { email: { contains: search, mode: 'insensitive' as const } },
+        { employee_id: { contains: search, mode: 'insensitive' as const } },
+      ],
+    } : {}),
+  }
 
-  if (search) query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,employee_id.ilike.%${search}%`)
-  if (dept) query = query.eq('department', dept)
+  const [profiles, total] = await Promise.all([
+    prisma.profile.findMany({
+      where,
+      select: {
+        id: true, email: true, full_name: true, first_name: true, last_name: true,
+        role: true, phone: true, employee_id: true, department: true, position: true,
+        is_active: true, joining_date: true, created_at: true, avatar_url: true,
+      },
+      orderBy: { created_at: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.profile.count({ where }),
+  ])
 
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data })
+  return NextResponse.json({ data: profiles.map(safeProfile), total, page, limit })
 }
 
 export async function POST(req: NextRequest) {
@@ -33,22 +79,41 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { email, password, full_name, first_name, last_name, phone, role, department, position } = body
 
+  // Check email uniqueness
+  const existing = await prisma.profile.findFirst({
+    where: { tenant_id: user.tenant_id, email: email.toLowerCase().trim() },
+  })
+  if (existing) return NextResponse.json({ error: 'Email already exists' }, { status: 409 })
+
   const hash = await bcrypt.hash(password || 'Welcome@123', 12)
-  const { count } = await supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('tenant_id', user.tenant_id)
-  const empId = `EMP-${String((count || 0) + 1).padStart(3, '0')}`
-  const displayName = full_name || `${first_name || ''} ${last_name || ''}`.trim() || email
+  const count = await prisma.profile.count({ where: { tenant_id: user.tenant_id } })
+  const empId = `EMP-${String(count + 1).padStart(3, '0')}`
+  const displayName = full_name || `${first_name ?? ''} ${last_name ?? ''}`.trim() || email
 
-  const { data, error } = await supabaseAdmin.from('profiles').insert({
-    tenant_id: user.tenant_id, email: email.toLowerCase().trim(),
-    password_hash: hash, full_name: displayName, first_name, last_name,
-    phone, role: role || 'worker', department, position, employee_id: empId,
-  }).select('id,email,full_name,role,department,employee_id,is_active').single()
+  const profile = await prisma.profile.create({
+    data: {
+      tenant_id: user.tenant_id,
+      email: email.toLowerCase().trim(),
+      password_hash: hash,
+      full_name: displayName,
+      first_name,
+      last_name,
+      phone,
+      role: role || 'worker',
+      department,
+      position,
+      employee_id: empId,
+    },
+    select: {
+      id: true, email: true, full_name: true, role: true,
+      department: true, employee_id: true, is_active: true,
+      first_name: true, last_name: true, phone: true,
+      joining_date: true, created_at: true, avatar_url: true, position: true,
+    },
+  })
 
-  if (error) {
-    if (error.code === '23505') return NextResponse.json({ error: 'Email already exists' }, { status: 409 })
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-  return NextResponse.json({ data })
+  await logAudit(user.tenant_id, 'USER_CREATED', 'user', profile.id, { user, newValues: { email } })
+  return NextResponse.json({ data: safeProfile(profile) }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -62,21 +127,50 @@ export async function PATCH(req: NextRequest) {
   const isPrivileged = ['owner', 'admin'].includes(user.role)
   if (!isSelf && !isPrivileged) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Strip fields non-privileged users cannot touch
   if (!isPrivileged) {
     delete updates.role
     delete updates.is_active
     delete updates.employee_id
     delete updates.tenant_id
   }
-
-  if (password) updates.password_hash = await bcrypt.hash(password, 12)
   delete updates.tenant_id
+  delete updates.password_hash
 
-  const { data, error } = await supabaseAdmin.from('profiles')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id).eq('tenant_id', user.tenant_id)
-    .select('id,email,full_name,role,department,employee_id,is_active').single()
+  const updateData: Record<string, unknown> = { ...updates }
+  if (password) updateData.password_hash = await bcrypt.hash(password, 12)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data })
+  const profile = await prisma.profile.update({
+    where: { id, tenant_id: user.tenant_id },
+    data: updateData,
+    select: {
+      id: true, email: true, full_name: true, role: true,
+      department: true, employee_id: true, is_active: true,
+      first_name: true, last_name: true, phone: true,
+      joining_date: true, created_at: true, avatar_url: true, position: true,
+    },
+  })
+
+  await logAudit(user.tenant_id, 'USER_UPDATED', 'user', id, { user })
+  return NextResponse.json({ data: safeProfile(profile) })
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await getCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!['owner', 'admin'].includes(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'User ID required' }, { status: 400 })
+  if (id === user.id) return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 400 })
+
+  // Soft delete
+  await prisma.profile.update({
+    where: { id, tenant_id: user.tenant_id },
+    data: { is_active: false },
+  })
+
+  await logAudit(user.tenant_id, 'USER_DEACTIVATED', 'user', id, { user })
+  return NextResponse.json({ success: true })
 }
