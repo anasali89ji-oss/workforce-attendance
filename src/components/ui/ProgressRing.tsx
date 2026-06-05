@@ -19,7 +19,11 @@ export function ProgressRing({ value, progress, size = 64, strokeWidth = 6, colo
   const [current, setCurrent] = useState(animate ? 0 : resolvedValue)
 
   useEffect(() => {
-    if (!animate) { setCurrent(resolvedValue); return }
+    if (!animate) {
+      // Schedule state update after paint to avoid synchronous setState in effect
+      const id = requestAnimationFrame(() => setCurrent(resolvedValue))
+      return () => cancelAnimationFrame(id)
+    }
     const start = performance.now()
     const duration = 800
     const from = 0

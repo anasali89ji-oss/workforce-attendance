@@ -12,6 +12,7 @@ export function isPrivileged(user: CurrentUser): boolean {
   return ['owner', 'admin', 'manager'].includes(user.role as UserRole)
 }
 
+// Fix 2.1: Standardized colon-notation permissions, aligned with setup/seed seeded roles
 export function hasPermission(user: CurrentUser, permission: string): boolean {
   const rolePermissions: Record<UserRole, string[]> = {
     owner: ['*'],
@@ -21,21 +22,31 @@ export function hasPermission(user: CurrentUser, permission: string): boolean {
       'roles:read', 'roles:write',
       'settings:read', 'settings:write',
       'analytics:read', 'reports:read',
-      'leave:approve', 'overtime:approve',
+      'attendance:read', 'attendance:manage',
+      'leave:approve', 'leave:request',
+      'overtime:approve', 'overtime:request',
       'payroll:read', 'payroll:write',
-      'audit:read'
+      'kanban:read', 'kanban:write',
+      'audit:read',
+      'team:read',
+      'profile:read', 'profile:write',
     ],
     manager: [
-      'employees:read', 'departments:read',
+      'employees:read', 'departments:read', 'team:read',
       'analytics:read', 'reports:read',
-      'leave:approve', 'overtime:approve',
-      'team:read'
+      'attendance:read', 'attendance:clock',
+      'leave:approve', 'leave:request',
+      'overtime:approve', 'overtime:request',
+      'kanban:read', 'kanban:write',
+      'profile:read', 'profile:write',
     ],
     worker: [
       'profile:read', 'profile:write',
-      'attendance:clock', 'leave:request',
-      'overtime:request'
-    ]
+      'attendance:clock',
+      'leave:request',
+      'overtime:request',
+      'kanban:read',
+    ],
   }
   const perms = rolePermissions[user.role as UserRole] || []
   return perms.includes('*') || perms.includes(permission)

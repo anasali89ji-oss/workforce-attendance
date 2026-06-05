@@ -121,11 +121,29 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { id, password, ...updates } = body
+  const { id, password, current_password, ...updates } = body
 
   const isSelf = id === user.id
   const isPrivileged = ['owner', 'admin'].includes(user.role)
   if (!isSelf && !isPrivileged) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // If changing own password, verify current password first
+  if (password && isSelf && !isPrivileged) {
+    if (!current_password) {
+      return NextResponse.json({ error: 'Current password is required', code: 'CURRENT_PASSWORD_REQUIRED' }, { status: 400 })
+    }
+    const currentProfile = await prisma.profile.findUnique({ where: { id }, select: { password_hash: true } })
+    if (!currentProfile?.password_hash) {
+      return NextResponse.json({ error: 'Cannot verify current password', code: 'NO_PASSWORD_HASH' }, { status: 400 })
+    }
+    const valid = await bcrypt.compare(current_password, currentProfile.password_hash)
+    if (!valid) {
+      return NextResponse.json({ error: 'Current password is incorrect', code: 'WRONG_CURRENT_PASSWORD' }, { status: 400 })
+    }
+    // Also update Supabase auth password so login continues to work
+    const { supabaseAdmin } = await import('@/lib/supabase')
+    await supabaseAdmin.auth.admin.updateUserById(id, { password }).catch(console.error)
+  }
 
   // Strip fields non-privileged users cannot touch
   if (!isPrivileged) {

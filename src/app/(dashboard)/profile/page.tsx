@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { User, Save, Lock } from 'lucide-react'
 
-interface UserProfile { full_name:string; first_name?:string; last_name?:string; email:string; phone?:string; role:string; department?:string }
+interface UserProfile { id: string; full_name:string; first_name?:string; last_name?:string; email:string; phone?:string; role:string; department?:string }
 
 export default function ProfilePage() {
   const [user,setUser] = useState<UserProfile|null>(null)
@@ -11,39 +11,65 @@ export default function ProfilePage() {
   const [form,setForm] = useState({first_name:'',last_name:'',phone:''})
   const [pwForm,setPwForm] = useState({current:'',newPw:'',confirm:''})
   const [saving,setSaving] = useState(false)
+  const [changingPw,setChangingPw] = useState(false)
 
   useEffect(() => {
+    // Fix 5.1: API returns { user: ... } not { data: ... }
     fetch('/api/auth/me').then(r => r.json()).then(j => {
-      if (j.data) {
-        setUser(j.data)
-        setForm({ first_name: j.data.first_name || '', last_name: j.data.last_name || '', phone: j.data.phone || '' })
+      if (j.user) {
+        setUser(j.user)
+        setForm({ first_name: j.user.first_name || '', last_name: j.user.last_name || '', phone: j.user.phone || '' })
       }
     })
   }, [])
 
   const saveInfo = async () => {
+    if (!user) return
     setSaving(true)
     try {
       const res = await fetch('/api/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form })
+        // Fix 5.1: Include id in PATCH body so API knows which profile to update
+        body: JSON.stringify({ id: user.id, ...form })
       })
       if (res.ok) {
         toast.success('Profile updated')
+        // Refresh local user state
+        setUser(prev => prev ? { ...prev, ...form, full_name: `${form.first_name} ${form.last_name}`.trim() } : prev)
       } else {
-        toast.error('Failed to update')
+        const data = await res.json()
+        toast.error(data.error || 'Failed to update')
       }
     } finally {
       setSaving(false)
     }
   }
 
+  // Fix 5.1: Implement actual password change API call
   const changePassword = async () => {
+    if (!user) return
     if (pwForm.newPw !== pwForm.confirm) { toast.error('Passwords do not match'); return }
     if (pwForm.newPw.length < 8) { toast.error('Password must be at least 8 characters'); return }
-    toast.success('Password changed successfully')
-    setPwForm({ current: '', newPw: '', confirm: '' })
+    if (!pwForm.current) { toast.error('Current password is required'); return }
+
+    setChangingPw(true)
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: user.id, current_password: pwForm.current, password: pwForm.newPw })
+      })
+      if (res.ok) {
+        toast.success('Password changed successfully')
+        setPwForm({ current: '', newPw: '', confirm: '' })
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to change password')
+      }
+    } finally {
+      setChangingPw(false)
+    }
   }
 
   if (!user) return (
@@ -120,8 +146,8 @@ export default function ProfilePage() {
                 <input type="password" className="input" value={pwForm[key]} onChange={e => setPwForm(f => ({ ...f, [key]:e.target.value }))} />
               </div>
             ))}
-            <button onClick={changePassword} className="btn btn-primary" style={{ gap:6, alignSelf:'flex-start' }}>
-              <Lock size={14} strokeWidth={2.5} />Change Password
+            <button onClick={changePassword} disabled={changingPw} className="btn btn-primary" style={{ gap:6, alignSelf:'flex-start' }}>
+              {changingPw ? <><span className="spinner spinner-sm" />Changing...</> : <><Lock size={14} strokeWidth={2.5} />Change Password</>}
             </button>
           </div>
         </div>

@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     console.error('[setup]', e)
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    // Fix 6.4: Never leak raw error details to client
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }
 
@@ -41,7 +42,6 @@ async function setupTenant(data: { name: string; timezone: string; logo_url?: st
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
 
-  // Ensure unique slug/subdomain
   const existing = await prisma.tenant.findFirst({ where: { slug } })
   const finalSlug = existing ? `${slug}-${Date.now().toString().slice(-4)}` : slug
 
@@ -58,7 +58,6 @@ async function setupTenant(data: { name: string; timezone: string; logo_url?: st
 
     await tx.setupWizardState.create({ data: { tenant_id: tenant.id, step: 2, data: {} } })
 
-    // Seed default leave types
     await tx.leaveType.createMany({
       data: [
         { tenant_id: tenant.id, name: 'Annual Leave', code: 'AL', color: '#3b82f6', days_per_year: 21 },
@@ -68,13 +67,13 @@ async function setupTenant(data: { name: string; timezone: string; logo_url?: st
       ],
     })
 
-    // Seed custom roles
+    // Fix 2.1: Use colon-notation permissions everywhere
     await tx.customRole.createMany({
       data: [
         { tenant_id: tenant.id, name: 'Owner', slug: 'owner', color: '#7c3aed', is_system: true, permissions: ['*'] },
-        { tenant_id: tenant.id, name: 'Admin', slug: 'admin', color: '#2563eb', is_system: true, permissions: ['attendance.manage', 'employees.manage', 'leave.approve', 'roles.manage', 'analytics.view', 'kanban.manage', 'settings.manage'] },
-        { tenant_id: tenant.id, name: 'Manager', slug: 'manager', color: '#d97706', is_system: true, permissions: ['attendance.view', 'attendance.clock', 'employees.view', 'leave.approve', 'kanban.manage', 'analytics.view'] },
-        { tenant_id: tenant.id, name: 'Employee', slug: 'worker', color: '#0891b2', is_system: true, permissions: ['attendance.clock', 'leave.apply', 'kanban.view'] },
+        { tenant_id: tenant.id, name: 'Admin', slug: 'admin', color: '#2563eb', is_system: true, permissions: ['attendance:read', 'attendance:manage', 'employees:read', 'employees:write', 'employees:delete', 'leave:approve', 'overtime:approve', 'roles:read', 'roles:write', 'analytics:read', 'reports:read', 'kanban:read', 'kanban:write', 'settings:read', 'settings:write', 'payroll:read', 'payroll:write', 'audit:read'] },
+        { tenant_id: tenant.id, name: 'Manager', slug: 'manager', color: '#d97706', is_system: true, permissions: ['attendance:read', 'attendance:clock', 'employees:read', 'departments:read', 'leave:approve', 'overtime:approve', 'kanban:read', 'kanban:write', 'analytics:read', 'reports:read', 'team:read'] },
+        { tenant_id: tenant.id, name: 'Employee', slug: 'worker', color: '#0891b2', is_system: true, permissions: ['profile:read', 'profile:write', 'attendance:clock', 'leave:request', 'overtime:request', 'kanban:read'] },
       ],
     })
 
@@ -107,16 +106,22 @@ async function setupOwner(data: {
     },
   })
 
-  // Create Supabase auth user for session management
-  try {
-    await supabaseAdmin.auth.admin.createUser({
-      email: data.email.toLowerCase().trim(),
-      password: data.password,
-      user_metadata: { tenant_id: data.tenant_id, role: 'owner' },
-      email_confirm: true,
-    })
-  } catch {
-    // Non-fatal: Supabase auth user creation is best-effort
+  // Fix 1.1/CRITICAL-3: Supabase auth user creation is now REQUIRED — not best-effort
+  const { error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: data.email.toLowerCase().trim(),
+    password: data.password,
+    user_metadata: { tenant_id: data.tenant_id, role: 'owner' },
+    email_confirm: true,
+  })
+
+  if (authError) {
+    // Roll back the profile creation since login will be impossible without the auth user
+    await prisma.profile.delete({ where: { id: profile.id } }).catch(() => {})
+    console.error('[setup] Supabase auth user creation failed:', authError)
+    return NextResponse.json(
+      { error: 'Failed to create authentication account. Please check your Supabase configuration.', code: 'AUTH_SETUP_FAILED' },
+      { status: 500 }
+    )
   }
 
   await prisma.setupWizardState.update({

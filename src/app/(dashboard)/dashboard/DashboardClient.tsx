@@ -35,8 +35,9 @@ export default function DashboardClient({ user }: DashboardClientProps) {
   const { data: myLog, refetch: refetchMyLog } = useQuery<AttendanceLog>({
     queryKey: ['attendance', 'today'],
     queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 7)
-      const res = await fetch(`/api/attendance?month=${today}&limit=1`)
+      // Fix 5.6: Use date= param (YYYY-MM-DD) to fetch today's record specifically, not month with limit=1
+      const today = new Date().toISOString().slice(0, 10)
+      const res = await fetch(`/api/attendance?date=${today}&limit=1`)
       if (!res.ok) throw new Error('Failed to fetch attendance')
       const json = await res.json()
       return json.data?.[0]
@@ -188,7 +189,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
           <div className="card p-5">
             <h3 className="text-sm font-bold text-[var(--text)] mb-4 flex items-center gap-2">
               <Activity size={16} className="text-[var(--brand-500)]" />
-              Today's Overview
+              Today&apos;s Overview
             </h3>
             <div className="space-y-3">
               {[

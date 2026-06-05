@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
-import { Timer, Plus, Check, X, Clock, AlertCircle } from 'lucide-react'
+import { Timer, Plus, Check, X } from 'lucide-react'
 import { Modal, DataTable, Column, Avatar, ConfirmDialog } from '@/components/ui'
 
 interface OTRequest { id:string; user_id:string; date:string; hours:number; reason:string; status:string; created_at:string; user?:{full_name:string} }
@@ -21,13 +21,18 @@ export default function OvertimePage() {
   const [saving, setSaving] = useState(false)
   const [rejectId, setRejectId] = useState<string|null>(null)
 
+  // Fix 5.2: Use real API instead of mock data
   const load = useCallback(async () => {
-    // Mock data since we don't have an overtime table yet
-    setRequests([
-      {id:'1',user_id:'u1',date:'2026-04-01',hours:2,reason:'Urgent deployment',status:'pending',created_at:new Date().toISOString(),user:{full_name:'Anas Ali'}},
-      {id:'2',user_id:'u2',date:'2026-03-30',hours:3,reason:'Client presentation prep',status:'approved',created_at:new Date().toISOString(),user:{full_name:'Ahmed Khan'}},
-    ])
-    setLoading(false)
+    setLoading(true)
+    try {
+      const res = await fetch('/api/overtime')
+      const json = await res.json()
+      if (json.data) setRequests(json.data)
+    } catch {
+      toast.error('Failed to load overtime requests')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -35,20 +40,49 @@ export default function OvertimePage() {
   const filtered = tab === 'all' ? requests : requests.filter(r => r.status === tab)
   const counts = { pending:requests.filter(r=>r.status==='pending').length, approved:requests.filter(r=>r.status==='approved').length, rejected:requests.filter(r=>r.status==='rejected').length }
 
+  // Fix 5.2: Submit to real API
   const submit = async () => {
     if (!form.date || !form.reason) { toast.error('Fill all fields'); return }
     setSaving(true)
-    await new Promise(r=>setTimeout(r,800))
-    toast.success('Overtime request submitted')
-    setShowModal(false)
-    setForm({date:'',hours:2,reason:''})
-    setSaving(false)
+    try {
+      const res = await fetch('/api/overtime', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        toast.success('Overtime request submitted')
+        setShowModal(false)
+        setForm({date:'',hours:2,reason:''})
+        await load()
+      } else {
+        toast.error(json.error || 'Failed to submit')
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
+  // Fix 5.2: Approve/reject via real API
   const doAction = async (id:string, action:string) => {
-    setRequests(prev => prev.map(r => r.id===id ? {...r, status:action==='approve'?'approved':'rejected'} : r))
-    toast.success(action==='approve'?'OT request approved':'OT request rejected')
-    setRejectId(null)
+    try {
+      const res = await fetch('/api/overtime', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      })
+      if (res.ok) {
+        toast.success(action==='approve'?'OT request approved':'OT request rejected')
+        setRejectId(null)
+        await load()
+      } else {
+        const json = await res.json()
+        toast.error(json.error || 'Action failed')
+      }
+    } catch {
+      toast.error('Network error')
+    }
   }
 
   const fmtDate = (d:string) => new Date(d+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})

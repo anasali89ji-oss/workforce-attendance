@@ -9,6 +9,14 @@ import { handleApiError, AuthError, ForbiddenError } from '@/lib/errors'
 const ALLOWED_TABLES = ['attendance_logs', 'leave_requests', 'payroll_records', 'overtime_requests'] as const
 type AllowedTable = (typeof ALLOWED_TABLES)[number]
 
+// Fix 4.5: Proper permission mapping (colon notation, correct names)
+const TABLE_PERMISSION: Record<AllowedTable, string> = {
+  attendance_logs: 'attendance:read',
+  leave_requests: 'leave:approve',
+  payroll_records: 'payroll:read',
+  overtime_requests: 'overtime:approve',
+}
+
 async function fetchTableData(table: AllowedTable, tenantId: string, filters: { dateFrom?: string; dateTo?: string }) {
   const dateFilter = (filters?.dateFrom || filters?.dateTo)
     ? {
@@ -38,7 +46,10 @@ export async function POST(req: NextRequest) {
 
     const { table, format, filters } = await req.json()
     if (!ALLOWED_TABLES.includes(table)) throw new ForbiddenError()
-    if (!hasPermission(user, `${table.replace('_logs', '')}:read`)) throw new ForbiddenError()
+
+    // Fix 4.5: Use the proper permission map
+    const requiredPermission = TABLE_PERMISSION[table as AllowedTable]
+    if (!hasPermission(user, requiredPermission)) throw new ForbiddenError()
 
     const data = await fetchTableData(table as AllowedTable, user.tenant_id, filters)
 

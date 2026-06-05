@@ -51,6 +51,7 @@ model Profile {
   department    String?
   position      String?
   employee_id   String?
+  base_salary   Float?
   is_active     Boolean  @default(true)
   joining_date  DateTime? @db.Date
   joined_at     DateTime @default(now())
@@ -69,6 +70,7 @@ model Profile {
   break_logs               BreakLog[]
   payroll_records          PayrollRecord[]
   overtime_requests        OvertimeRequest[]
+  work_schedules           WorkSchedule[]
   custom_field_values      EmployeeCustomFieldValue[]
 
   @@unique([tenant_id, email])
@@ -144,8 +146,10 @@ model WorkSchedule {
   effective_to   DateTime?
   created_at     DateTime  @default(now())
 
-  shift Shift @relation(fields: [shift_id], references: [id])
+  shift Shift   @relation(fields: [shift_id], references: [id])
+  user  Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([user_id])
   @@map("work_schedules")
 }
 
@@ -158,7 +162,7 @@ model AttendanceLog {
   attendance_date      DateTime  @db.Date
   punch_in_at          DateTime?
   punch_out_at         DateTime?
-  status               String    @default("present")
+  status               String    @default("punched_in")
   is_late              Boolean   @default(false)
   late_minutes         Int       @default(0)
   is_overtime          Boolean   @default(false)
@@ -364,7 +368,7 @@ model AuditLog {
   ip_address  String?
   created_at  DateTime @default(now())
 
-  user Profile? @relation(fields: [user_id], references: [id])
+  user Profile? @relation(fields: [user_id], references: [id], onDelete: SetNull)
 
   @@index([tenant_id])
   @@index([user_id])
@@ -396,17 +400,21 @@ model PayrollRecord {
   user_id      String
   period_start DateTime  @db.Date
   period_end   DateTime  @db.Date
-  base_salary  Float
-  overtime_pay Float     @default(0)
-  deductions   Float     @default(0)
-  bonuses      Float     @default(0)
-  net_pay      Float
-  status       String    @default("draft")
+  base_salary     Float
+  overtime_pay    Float     @default(0)
+  deductions      Float     @default(0)
+  bonuses         Float     @default(0)
+  net_pay         Float
+  total_hours     Float     @default(0)
+  overtime_hours  Float     @default(0)
+  working_days    Int       @default(0)
+  status          String    @default("draft")
   processed_at DateTime?
   created_at   DateTime  @default(now())
 
   user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@unique([tenant_id, user_id, period_start])
   @@index([tenant_id])
   @@index([user_id])
   @@map("payroll_records")
@@ -445,7 +453,7 @@ model TeamInvitation {
   accepted_at DateTime?
   created_at  DateTime  @default(now())
 
-  inviter Profile @relation("InvitedBy", fields: [invited_by], references: [id])
+  inviter Profile @relation("InvitedBy", fields: [invited_by], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@map("team_invitations")

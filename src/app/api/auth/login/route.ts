@@ -1,10 +1,9 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { supabaseAdmin } from '@/lib/supabase'
 import { prisma } from '@/lib/prisma'
-import { CURRENT_USER_COOKIE, generateCsrfToken } from '@/lib/auth.server'
+import { CURRENT_USER_COOKIE, generateCsrfToken, validateCsrfToken } from '@/lib/auth.server'
 import { loginSchema } from '@/lib/validators'
 import { handleApiError, AuthError, ValidationError } from '@/lib/errors'
 import { loginRateLimit, accountLockoutLimit } from '@/lib/rate-limit'
@@ -30,9 +29,17 @@ export async function POST(req: NextRequest) {
       throw new ValidationError('Invalid input', result.error.flatten().fieldErrors)
     }
 
+    // Fix 1.3: Validate CSRF token if provided
+    if (body.csrfToken) {
+      const csrfValid = await validateCsrfToken(body.csrfToken)
+      if (!csrfValid) {
+        return NextResponse.json({ error: 'Invalid CSRF token', code: 'CSRF_INVALID' }, { status: 403 })
+      }
+    }
+
     const { email, password } = result.data
 
-    // Fetch profile via Prisma
+    // Fix 1.2: Null check BEFORE accountKey — fetch profile first
     const profile = await prisma.profile.findFirst({
       where: { email: email.toLowerCase().trim(), is_active: true },
       include: { tenant: true },
@@ -42,7 +49,7 @@ export async function POST(req: NextRequest) {
       throw new AuthError('Invalid credentials')
     }
 
-    // Per-account lockout check
+    // Per-account lockout check (safe now that profile is confirmed non-null)
     const accountKey = `account:${profile.id}`
     const { success: accountOk } = await accountLockoutLimit.limit(accountKey)
     if (!accountOk) {
@@ -58,39 +65,30 @@ export async function POST(req: NextRequest) {
       throw new AuthError('Invalid credentials')
     }
 
-    // Supabase session for auth token
+    // Fix 6.3: Reset lockout counter on successful login
+    try {
+      // Upstash Ratelimit doesn't expose reset(); delete the key via Redis directly if available
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rl = accountLockoutLimit as any
+      if (rl.redis) {
+        await rl.redis.del(`@upstash/ratelimit:${accountKey}`)
+      }
+    } catch {
+      // Non-fatal: lockout will expire on its own
+    }
+
+    // Fix 1.1: Remove fallback token — Supabase session is mandatory
     const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
       email: email.toLowerCase().trim(),
       password,
     })
 
     if (sessionError || !sessionData.session) {
-      // Session creation can fail if Supabase auth user doesn't exist yet;
-      // generate a fallback opaque token using profile id
-      const fallbackToken = Buffer.from(`${profile.id}:${Date.now()}`).toString('base64')
-      const csrfToken = await generateCsrfToken()
-
-      const response = NextResponse.json({
-        success: true,
-        user: {
-          id: profile.id,
-          email: profile.email,
-          full_name: profile.full_name ?? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(),
-          role: profile.role,
-        },
-        csrfToken,
-      })
-
-      response.cookies.set(CURRENT_USER_COOKIE, fallbackToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60 * 60 * 24,
-        path: '/',
-      })
-
-      await logAudit(profile.tenant_id, 'LOGIN_SUCCESS', 'user', profile.id, { ipAddress: ip })
-      return response
+      // No fallback — if Supabase auth is broken the user cannot log in safely
+      return NextResponse.json(
+        { error: 'Auth system unavailable. Please contact support.', code: 'AUTH_CONFIG_ERROR' },
+        { status: 503 }
+      )
     }
 
     await logAudit(profile.tenant_id, 'LOGIN_SUCCESS', 'user', profile.id, { ipAddress: ip })

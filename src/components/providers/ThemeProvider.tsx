@@ -32,12 +32,15 @@ function applyTheme(t: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('system')
+  const [theme, setThemeState] = useState<Theme>(() => {
+    // Lazy initializer — runs once, avoids synchronous setState in effect
+    if (typeof window === 'undefined') return 'system'
+    return ((localStorage.getItem('wf_theme') as Theme) || 'system')
+  })
 
   useEffect(() => {
-    const saved = (localStorage.getItem('wf_theme') as Theme) || 'system'
-    setThemeState(saved)
-    applyTheme(saved)
+    applyTheme(theme)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const setTheme = (t: Theme) => {

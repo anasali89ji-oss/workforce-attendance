@@ -157,7 +157,7 @@ export default function LoginClient() {
                 <input type="checkbox" className="rounded border-[var(--border-strong)]" />
                 <span className="text-[var(--text-2)]">Remember me</span>
               </label>
-              <a href="#" className="text-[var(--brand-500)] hover:text-[var(--brand-600)] font-medium">Forgot password?</a>
+              <span title="Contact your administrator to reset your password" className="text-[var(--text-3)] cursor-help text-sm">Forgot password?</span>
             </div>
             <button type="submit" disabled={loading || !email || !password} className="btn btn-primary w-full btn-lg">
               {loading ? <span className="spinner spinner-sm" /> : <>Sign In<ArrowRight size={16} /></>}

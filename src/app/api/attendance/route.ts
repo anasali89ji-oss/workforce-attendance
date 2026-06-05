@@ -35,18 +35,27 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('user_id')
     const month = searchParams.get('month')
+    // Fix 5.6: Support specific date query param for dashboard clock widget
+    const date = searchParams.get('date')
     const limit = Math.min(parseInt(searchParams.get('limit') || '30'), 100)
     const offset = parseInt(searchParams.get('offset') || '0')
 
     const where: Record<string, unknown> = { tenant_id: user.tenant_id }
 
+    // Fix CRITICAL-6: attendance:read check is correct — non-privileged users see only their own records
     if (!hasPermission(user, 'attendance:read')) {
       where.user_id = user.id
     } else if (userId) {
       where.user_id = userId
     }
 
-    if (month) {
+    if (date) {
+      // Exact date filter (YYYY-MM-DD) — used by dashboard clock widget
+      const dateObj = new Date(`${date}T00:00:00`)
+      const nextDay = new Date(dateObj)
+      nextDay.setDate(nextDay.getDate() + 1)
+      where.attendance_date = { gte: dateObj, lt: nextDay }
+    } else if (month) {
       const start = new Date(`${month}-01`)
       const end = new Date(start.getFullYear(), start.getMonth() + 1, 0)
       where.attendance_date = { gte: start, lte: end }
@@ -112,7 +121,13 @@ export async function POST(req: NextRequest) {
       const lateThreshold = user.tenant?.late_threshold ?? 15
       const workStart = new Date(`${now.toISOString().split('T')[0]}T${startTime}:00`)
       workStart.setMinutes(workStart.getMinutes() + lateThreshold)
-      const isLate = now > workStart
+
+      // Fix 4.6/HIGH-17: Only mark late on actual working days
+      const DAY_CODES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+      const dayOfWeek = DAY_CODES[now.getDay()]
+      const workingDays: string[] = (user.tenant?.working_days as string[]) || ['MON', 'TUE', 'WED', 'THU', 'FRI']
+      const isWorkDay = workingDays.includes(dayOfWeek)
+      const isLate = isWorkDay && now > workStart
 
       const insertData = {
         tenant_id: user.tenant_id,
@@ -144,9 +159,19 @@ export async function POST(req: NextRequest) {
       }
 
       const punchIn = new Date(existing.punch_in_at)
-      const netMinutes = Math.floor((now.getTime() - punchIn.getTime()) / 60000)
+
+      // Fix 4.6/HIGH-16: Calculate break time and deduct from net duration
+      const breaks = await prisma.breakLog.findMany({
+        where: { attendance_id: existing.id, break_end: { not: null } },
+        select: { duration_minutes: true },
+      })
+      const totalBreakMinutes = breaks.reduce((sum, b) => sum + (b.duration_minutes ?? 0), 0)
+      const grossMinutes = Math.floor((now.getTime() - punchIn.getTime()) / 60000)
+      const netMinutes = Math.max(0, grossMinutes - totalBreakMinutes)
+
       const endTime = user.tenant?.working_hours_end ?? '18:00'
       const workEnd = new Date(`${now.toISOString().split('T')[0]}T${endTime}:00`)
+      // Overtime = time after shift end, but only if net (worked) time exceeds shift end
       const overtimeMinutes = now > workEnd ? Math.floor((now.getTime() - workEnd.getTime()) / 60000) : 0
 
       const log = await prisma.attendanceLog.update({

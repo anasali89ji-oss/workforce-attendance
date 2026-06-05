@@ -177,7 +177,7 @@ export default function LeaveRequestsPage() {
                           <span>{fmtDate(req.end_date)}</span>
                           <span style={{ fontWeight: 700, color: 'var(--text)' }}>{req.days_count} day{req.days_count!==1?'s':''}</span>
                         </div>
-                        {req.reason && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, fontStyle: 'italic' }}>"{req.reason}"</div>}
+                        {req.reason && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, fontStyle: 'italic' }}>&quot;{req.reason}&quot;</div>}
                         {req.rejection_reason && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}><X size={10} strokeWidth={2.5} />{req.rejection_reason}</div>}
                       </div>
                     </div>

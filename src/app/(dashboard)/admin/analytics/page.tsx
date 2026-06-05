@@ -21,12 +21,13 @@ const KPIS = [
 
 const PIE_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#0891b2']
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipPayloadItem { name: string; value: number | string; color: string }
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadItem[]; label?: string }) => {
   if (!active || !payload?.length) return null
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', boxShadow: 'var(--shadow-md)', fontSize: 12 }}>
       {label && <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{label}</div>}
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, display: 'inline-block' }} />
           <span style={{ color: 'var(--text-2)' }}>{p.name}: <strong style={{ color: 'var(--text)' }}>{p.value}{p.name === 'rate' ? '%' : ''}</strong></span>
@@ -40,9 +41,9 @@ type Period = 'week' | 'month' | 'quarter'
 
 export default function AnalyticsPage() {
   const [summary, setSummary]     = useState<Summary|null>(null)
-  const [monthly, setMonthly]     = useState<any[]>([])
-  const [deptStats, setDeptStats] = useState<any[]>([])
-  const [leaveStats, setLeaveStats] = useState<any[]>([])
+  const [monthly, setMonthly]     = useState<Record<string, unknown>[]>([])
+  const [deptStats, setDeptStats] = useState<Record<string, unknown>[]>([])
+  const [leaveStats, setLeaveStats] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading]     = useState(true)
   const [period, setPeriod]       = useState<Period>('month')
   const [month, setMonth]         = useState(new Date().toISOString().slice(0,7))
@@ -67,12 +68,12 @@ export default function AnalyticsPage() {
 
   const exportData = () => {
     if (!monthly.length) { toast('No data to export'); return }
-    const rows = [['Date','Present','Late','Absent'], ...monthly.map((r:any) => [r.date, r.present, r.late, r.absent])]
+    const rows = [['Date','Present','Late','Absent'], ...monthly.map((r:Record<string,unknown>) => [r.date, r.present, r.late, r.absent])]
     const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv'})
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `analytics-${month}.csv`; a.click()
   }
 
-  function toast(x: any) {}  // placeholder
+  function toast(x: string) { console.log(x) }  // placeholder
 
   return (
     <div className="page anim-fade-up">
@@ -179,8 +180,8 @@ export default function AnalyticsPage() {
                 <YAxis dataKey="department" type="category" tick={{ fontSize: 11, fill: 'var(--text-2)' }} width={90} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="attendance_rate" name="rate" radius={[0,6,6,0]}>
-                  {deptStats.map((d:any, i:number) => (
-                    <Cell key={i} fill={d.attendance_rate >= 90 ? '#10b981' : d.attendance_rate >= 75 ? '#f59e0b' : '#ef4444'} />
+                  {deptStats.map((d:Record<string,unknown>, i:number) => (
+                    <Cell key={i} fill={(d.attendance_rate as number) >= 90 ? '#10b981' : (d.attendance_rate as number) >= 75 ? '#f59e0b' : '#ef4444'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -207,9 +208,9 @@ export default function AnalyticsPage() {
               <PieChart>
                 <Pie data={leaveStats} dataKey="days" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={36} paddingAngle={3}
                   label={({ name, percent }) => percent > 0.06 ? `${name} ${Math.round(percent*100)}%` : ''} labelLine={false} fontSize={10}>
-                  {leaveStats.map((_:any, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  {leaveStats.map((_:unknown, i:number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v:any) => [`${v} days`]} contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid var(--border)' }} />
+                <Tooltip formatter={(v:number) => [`${v} days`]} contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid var(--border)' }} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
               </PieChart>
             </ResponsiveContainer>

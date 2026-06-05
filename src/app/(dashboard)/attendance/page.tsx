@@ -75,7 +75,13 @@ export default function AttendancePage() {
 
   const getDayLogs = (day: number) => {
     const dateStr = `${month}-${day.toString().padStart(2, '0')}`
-    return filtered.filter(l => l.attendance_date === dateStr)
+    // Fix 5.3: attendance_date may be a Date object (from Prisma) or a string (from JSON)
+    return filtered.filter(l => {
+      const logDate = typeof l.attendance_date === 'string'
+        ? l.attendance_date.slice(0, 10)
+        : (l.attendance_date as unknown as Date).toISOString().slice(0, 10)
+      return logDate === dateStr
+    })
   }
 
   const statusBadge = (status: string, isLate?: boolean) => {

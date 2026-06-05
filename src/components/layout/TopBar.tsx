@@ -1,28 +1,58 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Bell, Moon, Sun, Command, X, Check } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { Search, Bell, Moon, Sun, Command, X } from 'lucide-react'
+// Fix 7.1: Use custom ThemeProvider's useTheme, not next-themes (no next-themes ThemeProvider in tree)
+import { useTheme } from '@/components/providers/ThemeProvider'
 import type { CurrentUser } from '@/types'
 
 interface TopBarProps {
   user: CurrentUser
 }
 
+interface Notification {
+  id: string
+  title: string
+  message: string
+  time: string
+  read: boolean
+  type: 'success' | 'warning' | 'info' | 'error'
+}
+
 export default function TopBar({ user }: TopBarProps) {
   const router = useRouter()
-  const { theme, setTheme } = useTheme()
+  // Fix 7.1: Custom ThemeProvider exposes { theme, toggle, setTheme }
+  const { theme, toggle } = useTheme()
   const [cmdOpen, setCmdOpen] = useState(false)
   const [cmdQuery, setCmdQuery] = useState('')
   const [notifOpen, setNotifOpen] = useState(false)
-  const [notifications] = useState([
-    { id: '1', title: 'Leave request approved', message: 'Your annual leave for June 15-18 was approved.', time: '2h ago', read: false, type: 'success' as const },
-    { id: '2', title: 'Late arrival warning', message: 'You were 12 minutes late today.', time: '5h ago', read: false, type: 'warning' as const },
-    { id: '3', title: 'New team member', message: 'Sarah Johnson joined the Engineering team.', time: '1d ago', read: true, type: 'info' as const },
-  ])
+  // Fix 5.4: Real notifications state
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [notifLoading, setNotifLoading] = useState(false)
 
   const cmdInputRef = useRef<HTMLInputElement>(null)
+
+  // Fix 5.4: Fetch real notifications
+  const fetchNotifications = useCallback(async () => {
+    setNotifLoading(true)
+    try {
+      const res = await fetch('/api/notifications')
+      const json = await res.json()
+      if (json.data) setNotifications(json.data)
+    } catch {
+      // Non-fatal — keep existing notifications
+    } finally {
+      setNotifLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchNotifications()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [fetchNotifications])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -49,11 +79,13 @@ export default function TopBar({ user }: TopBarProps) {
     { label: 'Go to Leave Requests', shortcut: 'L', action: () => router.push('/leave-requests') },
     { label: 'Go to Team Directory', shortcut: 'T', action: () => router.push('/team-directory') },
     { label: 'Go to Reports', shortcut: 'R', action: () => router.push('/reports') },
-    { label: 'Toggle Dark Mode', shortcut: 'M', action: () => setTheme(theme === 'dark' ? 'light' : 'dark') },
+    // Fix 7.1: Use custom theme toggle
+    { label: 'Toggle Dark Mode', shortcut: 'M', action: toggle },
   ]
 
   const filteredCommands = commands.filter(c => c.label.toLowerCase().includes(cmdQuery.toLowerCase()))
   const unreadCount = notifications.filter(n => !n.read).length
+  const isDark = theme === 'dark'
 
   return (
     <>
@@ -67,12 +99,16 @@ export default function TopBar({ user }: TopBarProps) {
         </button>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="btn btn-icon btn-sm" title="Toggle theme">
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          {/* Fix 7.1: Use custom toggle function */}
+          <button onClick={toggle} className="btn btn-icon btn-sm" title="Toggle theme">
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
           <div className="relative">
-            <button onClick={() => setNotifOpen(!notifOpen)} className="btn btn-icon btn-sm relative">
+            <button
+              onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen) fetchNotifications() }}
+              className="btn btn-icon btn-sm relative"
+            >
               <Bell size={16} />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[var(--danger)] text-white text-[9px] font-bold flex items-center justify-center">{unreadCount}</span>
@@ -84,22 +120,30 @@ export default function TopBar({ user }: TopBarProps) {
                 <div className="absolute right-0 top-full mt-2 w-80 card z-50 shadow-xl anim-scale-in overflow-hidden">
                   <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
                     <span className="text-sm font-bold text-[var(--text)]">Notifications</span>
-                    <button className="text-xs text-[var(--brand-500)] hover:text-[var(--brand-600)] font-medium">Mark all read</button>
+                    <button className="text-xs text-[var(--brand-500)] hover:text-[var(--brand-600)] font-medium" onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}>Mark all read</button>
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {notifications.map(n => (
-                      <div key={n.id} className={`p-3 border-b border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors cursor-pointer ${n.read ? 'opacity-60' : ''}`}>
-                        <div className="flex items-start gap-2.5">
-                          <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'success' ? 'bg-[var(--success)]' : n.type === 'warning' ? 'bg-[var(--warning)]' : 'bg-[var(--brand-500)]'}`} />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-[var(--text)]">{n.title}</div>
-                            <div className="text-xs text-[var(--text-3)] mt-0.5">{n.message}</div>
-                            <div className="text-[10px] text-[var(--text-3)] mt-1">{n.time}</div>
-                          </div>
-                          {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-[var(--brand-500)] flex-shrink-0 mt-1" />}
-                        </div>
+                    {notifLoading && notifications.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <span className="spinner spinner-sm" style={{ borderTopColor: 'var(--brand-500)' }} />
                       </div>
-                    ))}
+                    ) : notifications.length === 0 ? (
+                      <div className="p-6 text-center text-sm text-[var(--text-3)]">No notifications</div>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} className={`p-3 border-b border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors cursor-pointer ${n.read ? 'opacity-60' : ''}`}>
+                          <div className="flex items-start gap-2.5">
+                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'success' ? 'bg-[var(--success)]' : n.type === 'warning' ? 'bg-[var(--warning)]' : n.type === 'error' ? 'bg-[var(--danger)]' : 'bg-[var(--brand-500)]'}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-[var(--text)]">{n.title}</div>
+                              <div className="text-xs text-[var(--text-3)] mt-0.5">{n.message}</div>
+                              <div className="text-[10px] text-[var(--text-3)] mt-1">{n.time}</div>
+                            </div>
+                            {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-[var(--brand-500)] flex-shrink-0 mt-1" />}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </>

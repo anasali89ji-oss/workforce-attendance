@@ -33,8 +33,8 @@ interface DataTableProps<T extends { id: string }> {
   toolbar?: ReactNode
 }
 
-function getVal(row: any, key: string): any {
-  return key.split('.').reduce((o, k) => o?.[k], row)
+function getVal(row: Record<string, unknown>, key: string): unknown {
+  return key.split('.').reduce((o: Record<string, unknown> | unknown, k: string) => (o as Record<string, unknown>)?.[k], row)
 }
 
 export function DataTable<T extends { id: string }>({

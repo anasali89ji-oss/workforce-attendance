@@ -81,6 +81,6 @@ export async function DELETE(req: NextRequest) {
   if (!role) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (role.is_system) return NextResponse.json({ error: 'Cannot delete system roles' }, { status: 400 })
 
-  await prisma.customRole.delete({ where: { id } })
+  await prisma.customRole.delete({ where: { id, tenant_id: user.tenant_id } })
   return NextResponse.json({ success: true })
 }

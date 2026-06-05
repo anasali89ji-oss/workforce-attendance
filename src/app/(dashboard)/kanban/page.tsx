@@ -66,7 +66,7 @@ export default function KanbanPage() {
     try {
       const res = await fetch('/api/kanban', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ action:'create_board', name:newName.trim(), description:newDesc.trim(), template:tpl }),
+        body: JSON.stringify({ type:'board', name:newName.trim(), description:newDesc.trim() }),
       })
       const json = await res.json()
       if (!res.ok) { toast.error(json.error||'Failed'); return }
@@ -78,13 +78,13 @@ export default function KanbanPage() {
 
   const addCard = async (colId: string) => {
     if (!newTitle.trim()) return
-    await fetch('/api/kanban', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'create_card', column_id:colId, title:newTitle.trim(), priority:newPri }) })
+    await fetch('/api/kanban', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type:'card', column_id:colId, title:newTitle.trim(), priority:newPri }) })
     setAddingCard(null); setNewTitle(''); setNewPri('medium'); await load()
   }
 
   const deleteCard = async (cardId: string) => {
     setBoards(prev => prev.map((b,i) => i!==boardIdx ? b : { ...b, columns: b.columns.map(c => ({ ...c, cards:c.cards.filter(x=>x.id!==cardId) })) }))
-    await fetch('/api/kanban', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'delete_card', card_id:cardId }) })
+    await fetch(`/api/kanban?type=card&id=${cardId}`, { method:'DELETE' })
     toast.success('Card removed')
   }
 
@@ -96,13 +96,13 @@ export default function KanbanPage() {
       const cols = b.columns.map(c => ({ ...c, cards: c.cards.filter(x => { if (x.id===cardId){moved=x;return false} return true }) }))
       return { ...b, columns: cols.map(c => c.id===toColId && moved ? {...c,cards:[...c.cards,moved]} : c) }
     }))
-    await fetch('/api/kanban', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'move_card', card_id:cardId, column_id:toColId, position:9999 }) })
+    await fetch('/api/kanban', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type:'card', id:cardId, column_id:toColId, position:9999 }) })
   }
 
   const addColumn = async () => {
     if (!newColName.trim()||!board) return
     const color = COL_COLORS[board.columns.length % COL_COLORS.length]
-    await fetch('/api/kanban', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'create_column', board_id:board.id, name:newColName.trim(), color, position:board.columns.length }) })
+    await fetch('/api/kanban', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type:'column', board_id:board.id, name:newColName.trim(), color, position:board.columns.length }) })
     setAddingCol(false); setNewColName(''); await load(); toast.success('Column added')
   }
 
