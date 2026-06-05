@@ -119,7 +119,7 @@ export async function PATCH(req: NextRequest) {
       // Fix 4.7: On cancel, decrement pending_days
       if (req_.status === 'pending') {
         await tx.leaveBalance.updateMany({
-          where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type: req_.leave_type, year: new Date().getFullYear() },
+          where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type_id: req_.leave_type_id, year: new Date().getFullYear() },
           data: { pending_days: { decrement: req_.days_count } },
         })
       }
@@ -138,7 +138,7 @@ export async function PATCH(req: NextRequest) {
       })
       // Fix 4.7: Move days from pending to used on approve
       await tx.leaveBalance.updateMany({
-        where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type: req_.leave_type, year: new Date().getFullYear() },
+        where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type_id: req_.leave_type_id, year: new Date().getFullYear() },
         data: {
           pending_days: { decrement: req_.days_count },
           used_days: { increment: req_.days_count },
@@ -158,7 +158,7 @@ export async function PATCH(req: NextRequest) {
       })
       // Fix 4.7: On reject, decrement pending_days
       await tx.leaveBalance.updateMany({
-        where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type: req_.leave_type, year: new Date().getFullYear() },
+        where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type_id: req_.leave_type_id, year: new Date().getFullYear() },
         data: { pending_days: { decrement: req_.days_count } },
       })
       return updated
