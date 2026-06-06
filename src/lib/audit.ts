@@ -1,5 +1,4 @@
 import { prisma } from './prisma'
-import { Prisma } from '@prisma/client'
 import type { CurrentUser } from '@/types'
 
 export async function logAudit(
@@ -22,8 +21,8 @@ export async function logAudit(
         action,
         entity_type: entityType,
         entity_id: entityId ?? null,
-        old_values: (options?.oldValues ?? null) as Prisma.InputJsonValue | null,
-        new_values: (options?.newValues ?? null) as Prisma.InputJsonValue | null,
+        old_values: (options?.oldValues ?? null) as never,
+        new_values: (options?.newValues ?? null) as never,
         ip_address: options?.ipAddress ?? null,
       },
     })

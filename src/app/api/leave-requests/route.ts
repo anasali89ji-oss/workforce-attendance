@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { leave_type_id, start_date, end_date, reason } = await req.json()
-  const leave_type = leave_type_id
+  if (!leave_type_id) return NextResponse.json({ error: 'leave_type_id is required' }, { status: 400 })
 
   const start = new Date(start_date)
   const end = new Date(end_date)
@@ -46,13 +46,13 @@ export async function POST(req: NextRequest) {
     cur.setDate(cur.getDate() + 1)
   }
 
-  // Fix 4.7: Check leave balance before creating the request
+  // Check leave balance — LeaveBalance uses leave_type_id (FK), not leave_type (string)
   const currentYear = new Date().getFullYear()
   const balance = await prisma.leaveBalance.findFirst({
     where: {
       user_id: user.id,
       tenant_id: user.tenant_id,
-      leave_type,
+      leave_type_id,        // ← FK field
       year: currentYear,
     },
   })
@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Create the request in a transaction — also increment pending_days atomically
   const data = await prisma.$transaction(async tx => {
     const request = await tx.leaveRequest.create({
       data: {
         tenant_id: user.tenant_id,
         user_id: user.id,
-        leave_type,
+        leave_type_id,          // FK relation
+        leave_type: leave_type_id, // legacy string column (kept for backward compat)
         start_date: new Date(start_date),
         end_date: new Date(end_date),
         days_count: days,
@@ -108,63 +108,72 @@ export async function PATCH(req: NextRequest) {
   const { id, action, rejection_reason } = await req.json()
   const isPrivileged = ['owner', 'admin', 'manager'].includes(user.role)
 
-  const req_ = await prisma.leaveRequest.findFirst({
+  const leaveReq = await prisma.leaveRequest.findFirst({
     where: { id, tenant_id: user.tenant_id },
   })
-  if (!req_) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!leaveReq) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  if (action === 'cancel' && req_.user_id === user.id) {
-    const data = await prisma.$transaction(async tx => {
-      const updated = await tx.leaveRequest.update({ where: { id }, data: { status: 'cancelled' } })
-      // Fix 4.7: On cancel, decrement pending_days
-      if (req_.status === 'pending') {
+  // Helper: updateMany uses leave_type_id (FK), not leave_type
+  const balanceWhere = {
+    user_id: leaveReq.user_id,
+    tenant_id: user.tenant_id,
+    leave_type_id: leaveReq.leave_type_id ?? undefined, // FK field on LeaveBalance
+    year: new Date().getFullYear(),
+  }
+
+  if (action === 'cancel' && leaveReq.user_id === user.id) {
+    const updated = await prisma.$transaction(async tx => {
+      const r = await tx.leaveRequest.update({ where: { id }, data: { status: 'cancelled' } })
+      if (leaveReq.status === 'pending' && leaveReq.leave_type_id) {
         await tx.leaveBalance.updateMany({
-          where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type_id: req_.leave_type_id, year: new Date().getFullYear() },
-          data: { pending_days: { decrement: req_.days_count } },
+          where: balanceWhere,
+          data: { pending_days: { decrement: leaveReq.days_count } },
         })
       }
-      return updated
+      return r
     })
-    return NextResponse.json({ data })
+    return NextResponse.json({ data: updated })
   }
 
   if (!isPrivileged) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   if (action === 'approve') {
-    const data = await prisma.$transaction(async tx => {
-      const updated = await tx.leaveRequest.update({
+    const updated = await prisma.$transaction(async tx => {
+      const r = await tx.leaveRequest.update({
         where: { id },
         data: { status: 'approved', approved_by: user.id, approved_at: new Date() },
       })
-      // Fix 4.7: Move days from pending to used on approve
-      await tx.leaveBalance.updateMany({
-        where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type_id: req_.leave_type_id, year: new Date().getFullYear() },
-        data: {
-          pending_days: { decrement: req_.days_count },
-          used_days: { increment: req_.days_count },
-        },
-      })
-      return updated
+      if (leaveReq.leave_type_id) {
+        await tx.leaveBalance.updateMany({
+          where: balanceWhere,
+          data: {
+            pending_days: { decrement: leaveReq.days_count },
+            used_days:    { increment: leaveReq.days_count },
+          },
+        })
+      }
+      return r
     })
     await logAudit(user.tenant_id, 'LEAVE_APPROVED', 'leave_request', id, { user })
-    return NextResponse.json({ data })
+    return NextResponse.json({ data: updated })
   }
 
   if (action === 'reject') {
-    const data = await prisma.$transaction(async tx => {
-      const updated = await tx.leaveRequest.update({
+    const updated = await prisma.$transaction(async tx => {
+      const r = await tx.leaveRequest.update({
         where: { id },
         data: { status: 'rejected', rejected_at: new Date(), rejection_reason },
       })
-      // Fix 4.7: On reject, decrement pending_days
-      await tx.leaveBalance.updateMany({
-        where: { user_id: req_.user_id, tenant_id: user.tenant_id, leave_type_id: req_.leave_type_id, year: new Date().getFullYear() },
-        data: { pending_days: { decrement: req_.days_count } },
-      })
-      return updated
+      if (leaveReq.leave_type_id) {
+        await tx.leaveBalance.updateMany({
+          where: balanceWhere,
+          data: { pending_days: { decrement: leaveReq.days_count } },
+        })
+      }
+      return r
     })
     await logAudit(user.tenant_id, 'LEAVE_REJECTED', 'leave_request', id, { user })
-    return NextResponse.json({ data })
+    return NextResponse.json({ data: updated })
   }
 
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
