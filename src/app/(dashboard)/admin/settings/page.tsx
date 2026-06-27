@@ -18,14 +18,46 @@ export default function SettingsPage() {
   const [saving, setSaving]   = useState(false)
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r=>r.json()).then(j => { if (j.data?.tenant) setTenant(j.data.tenant) })
+    // BUG-2.1 FIX: API returns { user: { tenant: {...} } }, not { data: { tenant: {...} } }
+    fetch('/api/auth/me').then(r => r.json()).then(j => {
+      if (j.user?.tenant) {
+        const t = j.user.tenant
+        setTenant({
+          name: t.name || '',
+          timezone: t.timezone || 'UTC',
+          work_start_time: t.working_hours_start || '09:00',
+          work_end_time: t.working_hours_end || '18:00',
+          late_threshold: t.late_threshold || 15,
+          subdomain: t.slug || '',
+          work_days: (t.working_days || ['MON','TUE','WED','THU','FRI'])
+            .map((d: string) => ['SUN','MON','TUE','WED','THU','FRI','SAT'].indexOf(d))
+            .filter((n: number) => n >= 0)
+            .join(','),
+        })
+      }
+    })
   }, [])
 
   const save = async () => {
     if (!tenant) return
     setSaving(true)
     try {
-      const res = await fetch('/api/tenants', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(tenant) })
+      // BUG-2.2 FIX: Transform frontend field names to API field names before sending
+      const payload = {
+        name: tenant.name,
+        timezone: tenant.timezone,
+        working_hours_start: tenant.work_start_time,
+        working_hours_end: tenant.work_end_time,
+        late_threshold: tenant.late_threshold,
+        working_days: (tenant.work_days || '').split(',').filter(Boolean)
+          .map((n: string) => ['SUN','MON','TUE','WED','THU','FRI','SAT'][parseInt(n)])
+          .filter(Boolean),
+      }
+      const res = await fetch('/api/tenants', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
       if (res.ok) toast.success('Settings saved')
       else toast.error('Failed to save')
     } finally { setSaving(false) }

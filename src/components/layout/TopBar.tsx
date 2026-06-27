@@ -39,7 +39,17 @@ export default function TopBar({ user }: TopBarProps) {
     try {
       const res = await fetch('/api/notifications')
       const json = await res.json()
-      if (json.data) setNotifications(json.data)
+      // BUG-2.3 FIX: Transform API fields (created_at, is_read) to component fields (time, read)
+      if (json.data) {
+        setNotifications(json.data.map((n: Record<string, unknown>) => ({
+          id: n.id as string,
+          title: n.title as string,
+          message: n.message as string,
+          time: n.created_at ? new Date(n.created_at as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
+          read: n.is_read as boolean,
+          type: (n.type as string) || 'info',
+        })))
+      }
     } catch {
       // Non-fatal — keep existing notifications
     } finally {
@@ -120,7 +130,15 @@ export default function TopBar({ user }: TopBarProps) {
                 <div className="absolute right-0 top-full mt-2 w-80 card z-50 shadow-xl anim-scale-in overflow-hidden">
                   <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
                     <span className="text-sm font-bold text-[var(--text)]">Notifications</span>
-                    <button className="text-xs text-[var(--brand-500)] hover:text-[var(--brand-600)] font-medium" onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}>Mark all read</button>
+                    <span className="text-xs text-[var(--brand-500)] hover:text-[var(--brand-600)] font-medium cursor-pointer" onClick={async () => {
+                      // BUG-2.4 FIX: Persist mark all read via API, not just local state
+                      await fetch('/api/notifications', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mark_all_read: true }),
+                      }).catch(() => {})
+                      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+                    }}>Mark all read</span>
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {notifLoading && notifications.length === 0 ? (

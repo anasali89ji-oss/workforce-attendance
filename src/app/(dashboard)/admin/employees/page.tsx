@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { UserCog, Plus, Search, UserCheck, UserX, X, Mail, Hash, Building2, Shield, Check } from 'lucide-react'
+import { useDebounce } from '@/hooks/useDebounce'
 
 interface Employee {
   id: string; full_name: string; email: string; role: string

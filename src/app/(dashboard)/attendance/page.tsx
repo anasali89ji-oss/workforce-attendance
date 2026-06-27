@@ -75,11 +75,9 @@ export default function AttendancePage() {
 
   const getDayLogs = (day: number) => {
     const dateStr = `${month}-${day.toString().padStart(2, '0')}`
-    // Fix 5.3: attendance_date may be a Date object (from Prisma) or a string (from JSON)
+    // BUG-5.2 FIX: Always normalize via new Date() — JSON serialization always produces ISO strings
     return filtered.filter(l => {
-      const logDate = typeof l.attendance_date === 'string'
-        ? l.attendance_date.slice(0, 10)
-        : (l.attendance_date as unknown as Date).toISOString().slice(0, 10)
+      const logDate = new Date(l.attendance_date).toISOString().slice(0, 10)
       return logDate === dateStr
     })
   }

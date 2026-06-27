@@ -90,13 +90,24 @@ export default function KanbanPage() {
 
   const moveCard = async (cardId: string, toColId: string) => {
     if (!dragCard || toColId===dragCard.fromCol) return
+    // BUG-5.1 FIX: Save previous state for rollback on API failure
+    const previousBoards = boards.map(b => ({
+      ...b,
+      columns: b.columns.map(c => ({ ...c, cards: [...c.cards] })),
+    }))
     setBoards(prev => prev.map((b,i) => {
       if (i!==boardIdx) return b
       let moved: Card|null = null
       const cols = b.columns.map(c => ({ ...c, cards: c.cards.filter(x => { if (x.id===cardId){moved=x;return false} return true }) }))
       return { ...b, columns: cols.map(c => c.id===toColId && moved ? {...c,cards:[...c.cards,moved]} : c) }
     }))
-    await fetch('/api/kanban', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type:'card', id:cardId, column_id:toColId, position:9999 }) })
+    try {
+      const res = await fetch('/api/kanban', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type:'card', id:cardId, column_id:toColId, position:9999 }) })
+      if (!res.ok) throw new Error('API error')
+    } catch {
+      setBoards(previousBoards) // rollback on failure
+      toast.error('Failed to move card')
+    }
   }
 
   const addColumn = async () => {

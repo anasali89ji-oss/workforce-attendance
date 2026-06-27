@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { CalendarOff, Plus, Check, X, Clock, AlertCircle, User, FileText, ChevronDown } from 'lucide-react'
 
@@ -52,6 +52,13 @@ export default function LeaveRequestsPage() {
 
   const filtered = requests.filter(r => tab === 'all' || r.status === tab)
   const counts = { pending: requests.filter(r=>r.status==='pending').length, approved: requests.filter(r=>r.status==='approved').length, rejected: requests.filter(r=>r.status==='rejected').length }
+
+  // BUG-2.5 FIX: Build color map from types array (id→color and name→color) since leave_type may be UUID or name
+  const typeColorMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    types.forEach(t => { map[t.id] = t.color; map[t.name.toLowerCase()] = t.color })
+    return map
+  }, [types])
 
   const calcDays = () => {
     if (!form.start_date || !form.end_date) return 0
@@ -148,7 +155,7 @@ export default function LeaveRequestsPage() {
           <div>
             {filtered.map(req => {
               const cfg = STATUS_CFG[req.status] || STATUS_CFG.pending
-              const leaveColor = LEAVE_COLORS[req.leave_type] || '#64748b'
+              const leaveColor = typeColorMap[req.leave_type] || LEAVE_COLORS[req.leave_type?.toLowerCase()] || '#64748b'
               return (
                 <div key={req.id} style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
                 onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-2)'}

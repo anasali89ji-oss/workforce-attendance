@@ -88,6 +88,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ data: { trend } })
     }
 
+    // BUG-2.6 FIX: attendance_trend is an alias for monthly — DashboardClient calls this type
+    if (type === 'attendance_trend') {
+      const [y, m] = month.split('-').map(Number)
+      const start = new Date(y, m - 1, 1)
+      const end = new Date(y, m, 0, 23, 59, 59)
+      const logs = await prisma.attendanceLog.findMany({
+        where: { tenant_id: user.tenant_id, attendance_date: { gte: start, lte: end } },
+        select: { attendance_date: true, status: true, is_late: true, net_duration_minutes: true },
+      })
+      const byDate = new Map<string, typeof logs>()
+      for (const l of logs) {
+        const key = l.attendance_date.toISOString().split('T')[0]
+        if (!byDate.has(key)) byDate.set(key, [])
+        byDate.get(key)!.push(l)
+      }
+      const trend = Array.from(byDate.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, dayLogs]) => ({
+          date,
+          present: dayLogs.filter(l => l.status !== 'on_leave').length,
+          late: dayLogs.filter(l => l.is_late).length,
+          on_leave: dayLogs.filter(l => l.status === 'on_leave').length,
+        }))
+      return NextResponse.json({ data: trend })
+    }
+
     return NextResponse.json({ error: 'Unknown analytics type' }, { status: 400 })
   } catch (error) {
     const { message, status, code } = handleApiError(error)

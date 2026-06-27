@@ -25,9 +25,11 @@ export default function LoginClient() {
   const [emailFocused, setEmailFocused] = useState(false)
   const [pwFocused, setPwFocused] = useState(false)
 
+  // BUG-1.2 FIX: Use /api/auth/me to reliably verify session instead of cookie string check
   useEffect(() => {
-    const token = document.cookie.includes('workforce_session_token')
-    if (token) router.push(next)
+    fetch('/api/auth/me')
+      .then(r => { if (r.ok) router.push(next) })
+      .catch(() => {})
   }, [router, next])
 
   const handleSubmit = async (e: React.FormEvent) => {

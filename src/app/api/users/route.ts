@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
         id: true, email: true, full_name: true, first_name: true, last_name: true,
         role: true, phone: true, employee_id: true, department: true, position: true,
         is_active: true, joining_date: true, created_at: true, avatar_url: true,
+        base_salary: true, // BUG-4.2 FIX: expose salary field for payroll calculations
       },
       orderBy: { created_at: 'desc' },
       skip,
@@ -156,7 +157,12 @@ export async function PATCH(req: NextRequest) {
   delete updates.password_hash
 
   const updateData: Record<string, unknown> = { ...updates }
-  if (password) updateData.password_hash = await bcrypt.hash(password, 12)
+  if (password) {
+    updateData.password_hash = await bcrypt.hash(password, 12)
+    // BUG-1.4 FIX: Always sync to Supabase auth, including privileged password resets
+    const { supabaseAdmin } = await import('@/lib/supabase')
+    await supabaseAdmin.auth.admin.updateUserById(id, { password }).catch(console.error)
+  }
 
   const profile = await prisma.profile.update({
     where: { id, tenant_id: user.tenant_id },

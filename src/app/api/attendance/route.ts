@@ -170,9 +170,12 @@ export async function POST(req: NextRequest) {
       const netMinutes = Math.max(0, grossMinutes - totalBreakMinutes)
 
       const endTime = user.tenant?.working_hours_end ?? '18:00'
+      const startTime = user.tenant?.working_hours_start ?? '09:00'
+      const workStart = new Date(`${now.toISOString().split('T')[0]}T${startTime}:00`)
       const workEnd = new Date(`${now.toISOString().split('T')[0]}T${endTime}:00`)
-      // Overtime = time after shift end, but only if net (worked) time exceeds shift end
-      const overtimeMinutes = now > workEnd ? Math.floor((now.getTime() - workEnd.getTime()) / 60000) : 0
+      // BUG-4.3 FIX: Overtime = net worked minutes minus scheduled hours (not raw clock-out vs shift end)
+      const scheduledMinutes = Math.floor((workEnd.getTime() - workStart.getTime()) / 60000)
+      const overtimeMinutes = Math.max(0, netMinutes - scheduledMinutes)
 
       const log = await prisma.attendanceLog.update({
         where: { id: existing.id },
@@ -202,8 +205,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'end_break') {
+      // BUG-4.4 FIX: Scope break lookup to today's breaks only to prevent cross-day race condition
+      const todayStart = new Date(now)
+      todayStart.setHours(0, 0, 0, 0)
       const activeBreak = await prisma.breakLog.findFirst({
-        where: { attendance_id: existing?.id, break_end: null },
+        where: {
+          attendance_id: existing?.id,
+          break_end: null,
+          break_start: { gte: todayStart }, // Ensure it's today's break
+        },
       })
 
       if (!activeBreak) {
