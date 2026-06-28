@@ -142,8 +142,9 @@ async function setupOwner(data: {
   let supabaseUserId: string
 
   // Check if Supabase user already exists (from a previous failed attempt)
-  const { data: { users: existingSupaUsers } } = await supabaseAdmin.auth.admin.listUsers()
-  const existingSupaUser = existingSupaUsers?.find(u => u.email === normalizedEmail)
+  const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
+  const existingSupaUsers = (listData?.users ?? []) as Array<{ id: string; email?: string }>
+  const existingSupaUser = existingSupaUsers.find(u => u.email === normalizedEmail)
 
   if (existingSupaUser) {
     // Reuse existing Supabase user — update password to match what user just entered
