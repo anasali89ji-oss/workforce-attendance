@@ -2,7 +2,6 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { supabase } from '@/lib/supabase'
 import { prisma } from '@/lib/prisma'
 import { CURRENT_USER_COOKIE, generateCsrfToken, validateCsrfToken } from '@/lib/auth.server'
 import { loginSchema } from '@/lib/validators'
@@ -78,17 +77,18 @@ export async function POST(req: NextRequest) {
       // Non-fatal: lockout will expire on its own
     }
 
-    // Use the regular client (anon key) for user-facing sign-in — NOT supabaseAdmin.
-    // Admin client has persistSession:false and is not designed for user auth flows.
-    const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
+    // Use supabaseAdmin (persistSession:false) for server-side sign-in.
+    // The browser supabase client has persistSession:true which tries to use
+    // localStorage in the API route → ReferenceError → 500 "Internal server error".
+    const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
       email: email.toLowerCase().trim(),
       password,
     })
 
     if (sessionError || !sessionData.session) {
-      // No fallback — if Supabase auth is broken the user cannot log in safely
+      console.error('[login] Supabase signIn error:', sessionError?.message)
       return NextResponse.json(
-        { error: 'Auth system unavailable. Please contact support.', code: 'AUTH_CONFIG_ERROR' },
+        { error: `Authentication failed: ${sessionError?.message ?? 'No session returned'}. Ensure Supabase env vars are set and the user exists in Supabase Auth.`, code: 'AUTH_CONFIG_ERROR' },
         { status: 503 }
       )
     }

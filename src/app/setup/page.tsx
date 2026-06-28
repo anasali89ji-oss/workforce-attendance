@@ -72,6 +72,22 @@ export default function SetupPage() {
   const [tenantId, setTenantId] = useState('')
   const [animating, setAnimating] = useState(false)
 
+  // Load existing setup state on mount so page refresh doesn't reset the wizard
+  useEffect(() => {
+    fetch('/api/setup').then(r => r.json()).then(json => {
+      if (json.tenant_exists && json.setup_state) {
+        setTenantId(json.setup_state.tenant_id || '')
+        const savedStep = json.setup_state.step || 1
+        // Resume from where we left off (but cap at 5 and don't go past complete)
+        if (!json.needs_setup) {
+          router.push('/login')
+        } else if (savedStep > 1) {
+          setStep(savedStep)
+        }
+      }
+    }).catch(() => {})
+  }, [router])
+
   const [company, setCompany] = useState({ name: '', timezone: 'Asia/Karachi' })
   const [owner, setOwner] = useState({ first_name: '', last_name: '', email: '', password: '' })
   const [hours, setHours] = useState({ start: '09:00', end: '18:00', days: ['MON','TUE','WED','THU','FRI'], late_threshold: 15 })
@@ -119,7 +135,7 @@ export default function SetupPage() {
         return
       }
       advanceStep()
-    } catch { toast.error('Network error') }
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Network error — check your connection') }
     finally { setLoading(false) }
   }
 
