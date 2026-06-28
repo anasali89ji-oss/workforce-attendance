@@ -20,11 +20,25 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     } = await supabaseAdmin.auth.getUser(sessionToken)
     if (authError || !authUser) return null
 
-    // Fetch profile from Prisma (single source of truth)
-    const profile = await prisma.profile.findFirst({
+    // Fetch profile from Prisma (single source of truth).
+    // Primary lookup by id — must match Supabase auth UUID (enforced since the ID-sync fix).
+    // Fallback to email for any accounts created before the fix to avoid hard lockout.
+    let profile = await prisma.profile.findFirst({
       where: { id: authUser.id, is_active: true },
       include: { tenant: true },
     })
+
+    if (!profile && authUser.email) {
+      // Fallback: look up by email for legacy accounts with mismatched UUIDs
+      profile = await prisma.profile.findFirst({
+        where: { email: authUser.email.toLowerCase(), is_active: true },
+        include: { tenant: true },
+      })
+      // If found by email, log warning so the mismatch can be fixed in DB
+      if (profile) {
+        console.warn(`[getCurrentUser] UUID mismatch: Supabase id=${authUser.id} but Prisma profile id=${profile.id} (email=${authUser.email}). Run a migration to align these.`)
+      }
+    }
 
     if (!profile) return null
 

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth.server'
 import { prisma } from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase'
 import { logAudit } from '@/lib/audit'
 import bcrypt from 'bcryptjs'
 
@@ -90,28 +91,56 @@ export async function POST(req: NextRequest) {
   const count = await prisma.profile.count({ where: { tenant_id: user.tenant_id } })
   const empId = `EMP-${String(count + 1).padStart(3, '0')}`
   const displayName = full_name || `${first_name ?? ''} ${last_name ?? ''}`.trim() || email
+  const rawPassword = password || 'Welcome@123'
 
-  const profile = await prisma.profile.create({
-    data: {
-      tenant_id: user.tenant_id,
-      email: email.toLowerCase().trim(),
-      password_hash: hash,
-      full_name: displayName,
-      first_name,
-      last_name,
-      phone,
-      role: role || 'worker',
-      department,
-      position,
-      employee_id: empId,
-    },
-    select: {
-      id: true, email: true, full_name: true, role: true,
-      department: true, employee_id: true, is_active: true,
-      first_name: true, last_name: true, phone: true,
-      joining_date: true, created_at: true, avatar_url: true, position: true,
-    },
+  // CRITICAL FIX: Create Supabase auth user FIRST to get canonical UUID.
+  // Profile id must match Supabase id or this employee can never log in.
+  const { data: authData, error: authCreateError } = await supabaseAdmin.auth.admin.createUser({
+    email: email.toLowerCase().trim(),
+    password: rawPassword,
+    user_metadata: { tenant_id: user.tenant_id, role: role || 'worker' },
+    email_confirm: true,
   })
+
+  if (authCreateError || !authData?.user) {
+    console.error('[users POST] Supabase user creation failed:', authCreateError)
+    return NextResponse.json(
+      { error: 'Failed to create authentication account for this employee.' },
+      { status: 500 }
+    )
+  }
+
+  const supabaseUserId = authData.user.id
+  let profile
+  try {
+    profile = await prisma.profile.create({
+      data: {
+        id: supabaseUserId, // Must match Supabase auth id
+        tenant_id: user.tenant_id,
+        email: email.toLowerCase().trim(),
+        password_hash: hash,
+        full_name: displayName,
+        first_name,
+        last_name,
+        phone,
+        role: role || 'worker',
+        department,
+        position,
+        employee_id: empId,
+      },
+      select: {
+        id: true, email: true, full_name: true, role: true,
+        department: true, employee_id: true, is_active: true,
+        first_name: true, last_name: true, phone: true,
+        joining_date: true, created_at: true, avatar_url: true, position: true,
+        base_salary: true,
+      },
+    })
+  } catch (profileError) {
+    await supabaseAdmin.auth.admin.deleteUser(supabaseUserId).catch(() => {})
+    console.error('[users POST] Profile creation failed:', profileError)
+    return NextResponse.json({ error: 'Failed to create employee profile.' }, { status: 500 })
+  }
 
   await logAudit(user.tenant_id, 'USER_CREATED', 'user', profile.id, { user, newValues: { email } })
   return NextResponse.json({ data: safeProfile(profile) }, { status: 201 })
@@ -141,9 +170,6 @@ export async function PATCH(req: NextRequest) {
     if (!valid) {
       return NextResponse.json({ error: 'Current password is incorrect', code: 'WRONG_CURRENT_PASSWORD' }, { status: 400 })
     }
-    // Also update Supabase auth password so login continues to work
-    const { supabaseAdmin } = await import('@/lib/supabase')
-    await supabaseAdmin.auth.admin.updateUserById(id, { password }).catch(console.error)
   }
 
   // Strip fields non-privileged users cannot touch
@@ -159,9 +185,15 @@ export async function PATCH(req: NextRequest) {
   const updateData: Record<string, unknown> = { ...updates }
   if (password) {
     updateData.password_hash = await bcrypt.hash(password, 12)
-    // BUG-1.4 FIX: Always sync to Supabase auth, including privileged password resets
-    const { supabaseAdmin } = await import('@/lib/supabase')
+    // Sync password to Supabase auth so login continues to work
     await supabaseAdmin.auth.admin.updateUserById(id, { password }).catch(console.error)
+  }
+
+  // Sync is_active → Supabase ban so deactivated users can't log in
+  if (typeof updates.is_active === 'boolean') {
+    await supabaseAdmin.auth.admin.updateUserById(id, {
+      ban_duration: updates.is_active ? 'none' : '876600h', // ~100 years = effectively banned
+    }).catch(console.error)
   }
 
   const profile = await prisma.profile.update({

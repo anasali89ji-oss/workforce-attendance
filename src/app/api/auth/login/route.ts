@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { prisma } from '@/lib/prisma'
 import { CURRENT_USER_COOKIE, generateCsrfToken, validateCsrfToken } from '@/lib/auth.server'
 import { loginSchema } from '@/lib/validators'
@@ -77,8 +78,9 @@ export async function POST(req: NextRequest) {
       // Non-fatal: lockout will expire on its own
     }
 
-    // Fix 1.1: Remove fallback token — Supabase session is mandatory
-    const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
+    // Use the regular client (anon key) for user-facing sign-in — NOT supabaseAdmin.
+    // Admin client has persistSession:false and is not designed for user auth flows.
+    const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
       email: email.toLowerCase().trim(),
       password,
     })

@@ -92,34 +92,48 @@ async function setupOwner(data: {
 }) {
   const hash = await bcrypt.hash(data.password, 12)
   const fullName = `${data.first_name} ${data.last_name}`.trim()
+  const normalizedEmail = data.email.toLowerCase().trim()
 
-  const profile = await prisma.profile.create({
-    data: {
-      tenant_id: data.tenant_id,
-      email: data.email.toLowerCase().trim(),
-      password_hash: hash,
-      full_name: fullName,
-      first_name: data.first_name,
-      last_name: data.last_name,
-      role: 'owner',
-      employee_id: 'EMP-001',
-    },
-  })
-
-  // Fix 1.1/CRITICAL-3: Supabase auth user creation is now REQUIRED — not best-effort
-  const { error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email: data.email.toLowerCase().trim(),
+  // CRITICAL FIX: Create Supabase auth user FIRST to get the canonical UUID.
+  // The Prisma profile id must equal the Supabase auth id or getCurrentUser()
+  // will look up by authUser.id and find nothing → auth never works.
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: normalizedEmail,
     password: data.password,
     user_metadata: { tenant_id: data.tenant_id, role: 'owner' },
     email_confirm: true,
   })
 
-  if (authError) {
-    // Roll back the profile creation since login will be impossible without the auth user
-    await prisma.profile.delete({ where: { id: profile.id } }).catch(() => {})
+  if (authError || !authData?.user) {
     console.error('[setup] Supabase auth user creation failed:', authError)
     return NextResponse.json(
       { error: 'Failed to create authentication account. Please check your Supabase configuration.', code: 'AUTH_SETUP_FAILED' },
+      { status: 500 }
+    )
+  }
+
+  const supabaseUserId = authData.user.id
+
+  try {
+    await prisma.profile.create({
+      data: {
+        id: supabaseUserId, // Use Supabase UUID so getCurrentUser() lookup matches
+        tenant_id: data.tenant_id,
+        email: normalizedEmail,
+        password_hash: hash,
+        full_name: fullName,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        role: 'owner',
+        employee_id: 'EMP-001',
+      },
+    })
+  } catch (profileError) {
+    // Roll back: delete the Supabase user since we can't create a matching profile
+    await supabaseAdmin.auth.admin.deleteUser(supabaseUserId).catch(() => {})
+    console.error('[setup] Profile creation failed after Supabase user created:', profileError)
+    return NextResponse.json(
+      { error: 'Failed to create user profile. Please try again.', code: 'PROFILE_CREATE_FAILED' },
       { status: 500 }
     )
   }
@@ -129,7 +143,7 @@ async function setupOwner(data: {
     data: { step: 3 },
   })
 
-  return NextResponse.json({ success: true, profile_id: profile.id })
+  return NextResponse.json({ success: true, profile_id: supabaseUserId })
 }
 
 async function setupWorkHours(data: {
