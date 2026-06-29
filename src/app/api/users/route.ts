@@ -12,6 +12,7 @@ function safeProfile(p: {
   last_name: string | null; role: string; phone: string | null; employee_id: string | null
   department: string | null; position: string | null; is_active: boolean
   joining_date: Date | null; created_at: Date; avatar_url: string | null
+  base_salary?: number | null
 }) {
   return {
     id: p.id,
@@ -28,6 +29,7 @@ function safeProfile(p: {
     joining_date: p.joining_date?.toISOString().split('T')[0] ?? null,
     created_at: p.created_at.toISOString(),
     avatar_url: p.avatar_url,
+    base_salary: p.base_salary ?? null,
   }
 }
 

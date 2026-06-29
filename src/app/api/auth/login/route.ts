@@ -117,6 +117,11 @@ export async function POST(req: NextRequest) {
 
     return response
   } catch (error) {
+    // Surface configuration errors (missing env vars) explicitly so they're debuggable
+    if (error instanceof Error && (error.message.includes('not configured') || error.message.includes('SUPABASE') || error.message.includes('DATABASE'))) {
+      console.error('[login] Configuration error:', error.message)
+      return NextResponse.json({ error: error.message, code: 'CONFIG_ERROR' }, { status: 503 })
+    }
     const { message, status, code } = handleApiError(error)
     return NextResponse.json({ error: message, code }, { status })
   }

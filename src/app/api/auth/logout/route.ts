@@ -1,7 +1,6 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { CURRENT_USER_COOKIE, CSRF_COOKIE, getCurrentUser } from '@/lib/auth.server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { logAudit } from '@/lib/audit'
@@ -13,22 +12,11 @@ export async function POST(req: NextRequest) {
 
     if (user) {
       await logAudit(user.tenant_id, 'LOGOUT', 'user', user.id, { ipAddress: ip, user })
-      // Fix 1.4: Invalidate Supabase server-side session so the token can't be reused
+      // Invalidate ALL sessions for this user in Supabase Auth
       try {
-        await supabaseAdmin.auth.admin.signOut(user.id)
+        await supabaseAdmin.auth.admin.signOut(user.id, 'global')
       } catch {
-        // Non-fatal: cookie deletion below will prevent local re-use
-      }
-    } else {
-      // Even without a valid user, try to revoke the raw token
-      try {
-        const cookieStore = await cookies()
-        const token = cookieStore.get(CURRENT_USER_COOKIE)?.value
-        if (token) {
-          await supabaseAdmin.auth.admin.signOut(token)
-        }
-      } catch {
-        // Non-fatal
+        // Non-fatal — cookie deletion is the primary logout mechanism
       }
     }
 

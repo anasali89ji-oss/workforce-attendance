@@ -77,7 +77,7 @@ async function setupTenant(data: { name: string; timezone: string; logo_url?: st
       },
     })
 
-    await tx.setupWizardState.create({ data: { tenant_id: t.id, step: 1, data: {} } })
+    await tx.setupWizardState.create({ data: { tenant_id: t.id, step: 2, data: {} } })
 
     await tx.leaveType.createMany({
       data: [
